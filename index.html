@@ -817,7 +817,7 @@
     var fresh = !!token;
     if (token) store('zk_token', token); else token = store('zk_token') || '';
     S.token = token;
-    if (!token) { $('#who').textContent = ''; $('#main').innerHTML = '<div class="msg warn">このページは「自分用のリンク」から開いてください。リンクは管理者から届きます。</div><div class="card">倉庫のQRコードは、カメラで直接読むのではなく、アプリの「登録」→「QRを撮る」で読み取ってください。<br><br>自分用のリンクを開いたら、ブラウザの共有ボタンから「ホーム画面に追加」しておくと、次からアイコンですぐ開けます。</div>'; return; }
+    if (!token) { $('#who').textContent = ''; $('#main').innerHTML = '<div class="msg warn">このページは「自分用のリンク」から開いてください。リンクは管理者から届きます。</div><div class="card">倉庫のQRコードから開いた場合は、先に自分用のリンクをこのブラウザで一度開いてください。そのあとはQRからそのまま開けます。<br><br>自分用のリンクを開いたら、ブラウザの共有ボタンから「ホーム画面に追加」しておくと、次からアイコンですぐ開けます。</div>'; return; }
     refreshBootstrap().then(function (r) {
       if (!r.ok) { $('#who').textContent = ''; return msg($('#main'), 'ng', r.message); }
       $('#who').textContent = S.me.氏名 + ' さん【テスト環境】';
