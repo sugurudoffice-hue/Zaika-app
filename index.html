@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<title>在庫・発注</title>
+<script>
+  // 窓口：https://script.google.com/macros/s/AKfycbwL8MxUWg7MLXNPJXuubGAOJ7CTMR-S_SIF96c-jJ9iE3lWetWQ4W44YR3L0-JBt_CHbw/exec
+  window.ZK_API = "https://script.google.com/macros/s/AKfycbwL8MxUWg7MLXNPJXuubGAOJ7CTMR-S_SIF96c-jJ9iE3lWetWQ4W44YR3L0-JBt_CHbw/exec";
+  window.google = { script: { run: (function make(ok, ng) {
+    return new Proxy({}, { get: function (_, name) {
+      if (name === 'withSuccessHandler') return function (f) { return make(f, ng); };
+      if (name === 'withFailureHandler') return function (f) { return make(ok, f); };
+      return function () {
+        var args = Array.prototype.slice.call(arguments);
+        // text/plain にして事前確認（プリフライト）を起こさない。Cookieは送らない
+        fetch(window.ZK_API, { method: 'POST', body: JSON.stringify({ fn: name, args: args }), headers: { 'Content-Type': 'text/plain;charset=utf-8' }, credentials: 'omit', redirect: 'follow' })
+          .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+          .then(function (d) { if (ok) ok(d); })
+          .catch(function (e) { if (ng) ng(e); });
+      };
+    } });
+  })() } };
+</script>
+
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { --ink:#1a1a1a; --sub:#555; --line:#c9c9c9; --bg:#fafaf7; --acc:#1f5fbf; --ok:#1e7a36; --warn:#a15c00; --ng:#b3261e; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif; font-size:18px; line-height:1.5; color:var(--ink); background:var(--bg); padding-bottom:90px; }
+  header { position:sticky; top:0; z-index:5; background:#fff; border-bottom:1px solid var(--line); }
+  .who { padding:4px 16px; font-size:13px; color:var(--sub); }
+  nav { display:flex; }
+  nav button { flex:1; min-height:56px; border:0; border-bottom:4px solid transparent; background:none; font-size:19px; font-weight:700; color:var(--sub); }
+  nav button.on { color:var(--acc); border-bottom-color:var(--acc); }
+  main { padding:12px 16px; max-width:720px; margin:0 auto; }
+  h3 { font-size:18px; margin:20px 0 6px; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:10px; padding:12px; margin:10px 0; }
+  .big { font-size:24px; font-weight:700; line-height:1.3; }
+  .sub { color:var(--sub); font-size:15px; }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  input, select { width:100%; font-size:20px; padding:12px; border:1px solid #888; border-radius:10px; background:#fff; }
+  input.qty { font-size:28px; font-weight:700; text-align:right; }
+  .lbl { font-weight:700; margin:12px 0 4px; font-size:16px; color:var(--sub); }
+  button { font-family:inherit; }
+  .go { display:block; width:100%; min-height:60px; margin-top:12px; font-size:19px; font-weight:700; border:0; border-radius:12px; background:var(--acc); color:#fff; padding:8px 12px; }
+  .go:disabled { background:#9db3d6; }
+  .go2 { display:block; width:100%; min-height:52px; margin-top:8px; font-size:17px; font-weight:700; border:2px solid var(--acc); border-radius:12px; background:#fff; color:var(--acc); }
+  .btn { min-height:48px; padding:0 16px; font-size:17px; font-weight:700; border:2px solid var(--acc); border-radius:10px; background:#fff; color:var(--acc); }
+  .link { background:none; border:0; color:var(--acc); text-decoration:underline; font-size:15px; padding:8px 0; }
+  .danger { color:var(--ng); border-color:var(--ng); }
+  .chips { display:flex; flex-wrap:wrap; gap:8px; }
+  .chips button { min-height:48px; padding:0 14px; font-size:17px; border:2px solid #999; border-radius:999px; background:#fff; }
+  .chips button.on { border-color:var(--acc); background:#e7f1fb; font-weight:700; color:var(--acc); }
+  .pick { display:block; width:100%; text-align:left; min-height:52px; padding:8px 12px; margin:6px 0; font-size:17px; border:1px solid var(--line); border-radius:10px; background:#fff; }
+  .picked { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:10px 12px; border:2px solid var(--acc); border-radius:10px; background:#e7f1fb; font-weight:700; }
+  .msg { padding:10px 12px; border-radius:10px; margin:10px 0; font-weight:600; font-size:16px; }
+  .ok { background:#e5f4e4; color:#14532d; } .ng { background:#fbebeb; color:#7f1d1d; } .warn { background:#f9eeda; color:#6b3d00; }
+  .mark { display:inline-block; width:12px; height:12px; border-radius:50%; margin-right:6px; vertical-align:middle; border:2px solid var(--ng); }
+  .mark.doing { border-color:var(--warn); background:linear-gradient(90deg,var(--warn) 50%,transparent 50%); }
+  .mark.done { border-color:var(--ok); background:var(--ok); }
+  table { width:100%; border-collapse:collapse; font-size:16px; }
+  td { border-bottom:1px solid var(--line); padding:6px 2px; vertical-align:top; }
+  .toast { position:fixed; left:12px; right:12px; bottom:12px; z-index:40; background:#1a1a1a; color:#fff; border-radius:12px; padding:12px 14px; display:flex; gap:10px; align-items:center; justify-content:space-between; font-size:17px; max-width:700px; margin:0 auto; }
+  .toast button { min-height:44px; padding:0 14px; border-radius:8px; border:2px solid #fff; background:none; color:#fff; font-size:16px; font-weight:700; }
+  .overlay { position:fixed; inset:0; background:rgba(0,0,0,.45); display:flex; align-items:flex-end; justify-content:center; z-index:20; }
+  .sheet { background:#fff; width:100%; max-width:720px; max-height:92vh; overflow:auto; border-radius:16px 16px 0 0; padding:16px 16px 24px; }
+  .busy { position:fixed; top:0; left:0; right:0; height:4px; background:var(--acc); z-index:50; animation:b 1s infinite alternate; }
+  @keyframes b { from { opacity:.3 } to { opacity:1 } }
+  .hidden { display:none !important; }
+  img.photo { max-width:100%; border-radius:8px; }
+</style>
+</head>
+<body data-token="" data-area="">
+<header>
+  <div class="who" id="who">読み込み中…</div>
+  <nav id="nav">
+    <button data-tab="search" class="on">探す</button>
+    <button data-tab="register">登録</button>
+    <button data-tab="order">発注</button>
+    <button data-tab="admin" class="hidden" id="adminTab">管理</button>
+  </nav>
+</header>
+<main id="main"></main>
+<div id="busy" class="busy hidden"></div>
+<div id="toast" class="toast hidden"></div>
+
+<script>
+(function () {
+  'use strict';
+  var S = { token: '', me: null, data: null };
+
+  // ---------- 道具 ----------
+  function esc(s) {
+    return String(s === undefined || s === null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function $(sel, root) { return (root || document).querySelector(sel); }
+  function $all(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
+  function newReqId() { return window.crypto && crypto.randomUUID ? crypto.randomUUID() : 'r' + Date.now() + Math.random().toString(16).slice(2); }
+  function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } }
+  var pending = 0;
+  function call(name) {
+    var args = Array.prototype.slice.call(arguments, 1);
+    pending++; $('#busy').classList.remove('hidden');
+    return new Promise(function (resolve) {
+      function end(res) { pending--; if (!pending) $('#busy').classList.add('hidden'); resolve(res); }
+      google.script.run
+        .withSuccessHandler(function (res) { end(res || { ok: false, message: '応答がありません' }); })
+        .withFailureHandler(function () { end({ ok: false, message: '通信できませんでした。電波の良い所でもう一度押してください（二重に記録されることはありません）' }); })
+        [name].apply(null, [S.token].concat(args));
+    });
+  }
+  function msg(el, kind, text) { if (el) el.innerHTML = '<div class="msg ' + kind + '">' + esc(text) + '</div>'; }
+  var toastTimer = null;
+  /** 画面下に結果を出す。undo を渡すと「取り消す」ボタンが付く */
+  function toast(text, undo) {
+    var t = $('#toast');
+    t.innerHTML = '<span>' + esc(text) + '</span>' + (undo ? '<button data-undo>取り消す</button>' : '');
+    t.classList.remove('hidden');
+    if (undo) $('[data-undo]', t).onclick = function () { t.classList.add('hidden'); undo(); };
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.classList.add('hidden'); }, undo ? 10000 : 4000);
+  }
+  function matById(id) { return S.data.materials.filter(function (m) { return m.材料ID === id; })[0]; }
+  function matLabel(m) { return m ? [m.品名, m.型番, m.規格].filter(Boolean).join(' ') : ''; }
+  function shortLabel(m) { return m ? (m.型番 || [m.品名, m.規格].filter(Boolean).join(' ')) : ''; }
+  function siteName(id) { var s = S.data.sites.filter(function (x) { return x.現場ID === id; })[0]; return s ? s.現場名.replace(/^【架空】/, '') : ''; }
+  function areaName(id) { var a = S.data.areas.filter(function (x) { return x.エリアID === id; })[0]; return a ? a.エリアID + ' ' + a.名称 : id; }
+  function supName(id) { var s = S.data.suppliers.filter(function (x) { return x.仕入先ID === id; })[0]; return s ? s.社名.replace(/^【架空】/, '') : ''; }
+  function chips(name, items, selected) {
+    return '<div class="chips" data-chips="' + esc(name) + '">' + items.map(function (it) {
+      return '<button type="button" data-v="' + esc(it[0]) + '" class="' + (it[0] === selected ? 'on' : '') + '">' + it[1] + '</button>';
+    }).join('') + '</div>';
+  }
+  function chipValue(root, name) { var b = $('[data-chips="' + name + '"] button.on', root); return b ? b.getAttribute('data-v') : ''; }
+  function onChips(root, fn) {
+    root.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-chips] button'); if (!b) return;
+      var g = b.parentNode;
+      $all('button', g).forEach(function (x) { x.classList.toggle('on', x === b); });
+      fn(g.getAttribute('data-chips'), b.getAttribute('data-v'));
+    });
+  }
+  function siteChips(sel) { return chips('site', S.data.sites.map(function (s) { return [s.現場ID, esc(siteName(s.現場ID))]; }), sel); }
+  function openSheet(html) {
+    var o = document.createElement('div');
+    o.className = 'overlay';
+    o.innerHTML = '<div class="sheet">' + html + '<button class="go2" data-close>閉じる</button></div>';
+    o.addEventListener('click', function (e) { if (e.target === o || e.target.hasAttribute('data-close')) o.remove(); });
+    document.body.appendChild(o);
+    return o;
+  }
+  function debounce(fn, ms) { var t; return function () { var a = arguments; clearTimeout(t); t = setTimeout(function () { fn.apply(null, a); }, ms); }; }
+  function recentMaterials() { try { return JSON.parse(store('zk_recent') || '[]'); } catch (e) { return []; } }
+  function rememberMaterial(id) { var r = recentMaterials().filter(function (x) { return x !== id; }); r.unshift(id); store('zk_recent', JSON.stringify(r.slice(0, 6))); }
+  function undoMovements(ids, label) {
+    var p = Promise.resolve(true);
+    ids.forEach(function (id) {
+      p = p.then(function (okSoFar) {
+        if (!okSoFar) return false;
+        return call('api_cancelMovement', newReqId(), id, '直後の取消').then(function (r) { if (!r.ok) { toast(r.message); return false; } return true; });
+      });
+    });
+    return p.then(function (done) { if (done) toast(label + 'を取り消しました'); return done; });
+  }
+
+  /** 材料を選ぶ部品。空のときは最近使った材料を出す */
+  function picker(root, opts) {
+    var chosen = null;
+    root.innerHTML = '<div data-box><input data-q placeholder="材料名・型番を2〜3文字（例：vvf1.6）" autocomplete="off"><div data-list></div>' +
+      (opts.allowNew ? '<button class="link" data-new>一覧に無い材料</button>' : '') + '</div><div data-chosen class="hidden"></div>' +
+      (opts.allowNew ? '<div data-newform class="hidden card"><div class="lbl">品名（必須）</div><input data-n="品名"><div class="lbl">型番</div><input data-n="型番"><div class="lbl">規格・サイズ</div><input data-n="規格"><div class="lbl">単位</div><input data-n="単位" placeholder="m、個、本"></div>' : '');
+    var q = $('[data-q]', root), list = $('[data-list]', root);
+    function render() {
+      var words = q.value.trim().toLowerCase().normalize('NFKC').split(/\s+/).filter(Boolean);
+      var items;
+      if (!words.length) {
+        items = recentMaterials().map(matById).filter(Boolean);
+      } else {
+        items = S.data.materials.filter(function (m) {
+          var h = (matLabel(m) + ' ' + (m.材料ID || '')).toLowerCase().normalize('NFKC').replace(/\s+/g, '');
+          return words.every(function (w) { return h.indexOf(w) >= 0; });
+        });
+      }
+      list.innerHTML = (words.length ? '' : (items.length ? '<div class="sub">最近使った材料</div>' : '')) + items.slice(0, 6).map(function (m) {
+        return '<button type="button" class="pick" data-id="' + esc(m.材料ID) + '">' + esc(matLabel(m)) + ' <span class="sub">' + esc(m.単位) + '</span></button>';
+      }).join('') + (words.length && !items.length ? '<div class="sub">見つかりません</div>' : '');
+    }
+    function choose(m) {
+      chosen = m;
+      $('[data-box]', root).classList.toggle('hidden', !!m);
+      var c = $('[data-chosen]', root);
+      c.classList.toggle('hidden', !m);
+      c.innerHTML = m ? '<div class="picked"><span>' + esc(matLabel(m)) + '</span><button class="link" data-change style="white-space:nowrap">変更</button></div>' : '';
+      if (opts.allowNew) $('[data-newform]', root).classList.add('hidden');
+      opts.onChange(m);
+    }
+    q.addEventListener('input', render);
+    root.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-id]');
+      if (b) choose(matById(b.getAttribute('data-id')));
+      if (e.target.hasAttribute('data-change')) { choose(null); q.value = ''; render(); q.focus(); }
+      if (e.target.hasAttribute('data-new')) { $('[data-box]', root).classList.add('hidden'); $('[data-newform]', root).classList.remove('hidden'); $('[data-n="品名"]', root).focus(); opts.onChange({ 新規: true }); }
+    });
+    if (opts.allowNew) $('[data-newform]', root).addEventListener('input', function () { opts.onChange({ 新規: true }); });
+    render();
+    return {
+      value: function () {
+        if (chosen) return chosen;
+        if (opts.allowNew && !$('[data-newform]', root).classList.contains('hidden')) {
+          var n = {}; $all('[data-n]', root).forEach(function (i) { n[i.getAttribute('data-n')] = i.value.trim(); });
+          return n.品名 ? { 新規: true, 新規材料: n, 品名: n.品名, 単位: n.単位 || '個' } : null;
+        }
+        return null;
+      },
+      set: function (m) { choose(m); },
+      reset: function () { chosen = null; q.value = ''; $('[data-box]', root).classList.remove('hidden'); $('[data-chosen]', root).classList.add('hidden'); if (opts.allowNew) { $('[data-newform]', root).classList.add('hidden'); $all('[data-n]', root).forEach(function (i) { i.value = ''; }); } render(); },
+      focus: function () { q.focus(); },
+    };
+  }
+
+  // ---------- 探す ----------
+  function showSearch() {
+    var m = $('#main');
+    m.innerHTML = '<input id="q" placeholder="材料名・型番で探す（例：vvf2.0）" autocomplete="off"><div id="res"></div>';
+    var run = debounce(function () {
+      if (!$('#q')) return; // 別のタブに移った後
+      var q = $('#q').value.trim();
+      if (q.length < 2) { $('#res').innerHTML = ''; return; }
+      call('api_search', q).then(function (r) {
+        if (!$('#q') || $('#q').value.trim() !== q) return;
+        if (!r.ok) return msg($('#res'), 'ng', r.message);
+        if (!r.data.length) return msg($('#res'), 'warn', '見つかりません。未登録か名前が違う可能性があります（在庫0とは限りません）');
+        S.lastSearch = r.data;
+        $('#res').innerHTML = r.data.map(stockCard).join('');
+      });
+    }, 350);
+    $('#q').addEventListener('input', run);
+    $('#res').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-out]');
+      if (b) outSheet(S.lastSearch.filter(function (x) { return x.材料ID === b.getAttribute('data-out'); })[0]);
+      var o = e.target.closest('[data-order]');
+      if (o) switchTab('order', { 材料ID: o.getAttribute('data-order') });
+      var p = e.target.closest('[data-photo]');
+      if (p) call('api_photo', p.getAttribute('data-photo')).then(function (r) { if (r.ok) openSheet('<img class="photo" src="' + esc(r.data) + '">'); });
+    });
+    $('#q').focus();
+  }
+
+  function stockCard(x) {
+    var where = x.場所.map(function (l) {
+      return esc(l.エリアID) + ' ' + (l.状態 === '新品' ? '' : esc(l.状態) + ' ') + esc(l.数量) + esc(x.単位);
+    }).join('、');
+    return '<div class="card"><div style="font-weight:700">' + esc(matLabel(x)) + '</div>' +
+      '<div class="big">' + esc(x.表示) + '</div>' +
+      (x.場所.length ? '<div>使える ' + esc(x.使える数) + esc(x.単位) + '<span class="sub">（' + where + '）</span></div>' : '') +
+      (x.最終確認日時 ? '<div class="sub">最終確認 ' + esc(String(x.最終確認日時).slice(5, 16).replace('T', ' ')) + '・' + esc(x.棚卸し) + '</div>' : '') +
+      '<div class="row" style="margin-top:8px">' +
+      (x.場所.length ? '<button class="btn" data-out="' + esc(x.材料ID) + '">出庫</button>' : '') +
+      '<button class="btn" data-order="' + esc(x.材料ID) + '">発注</button>' +
+      (x.写真ID ? '<button class="link" data-photo="' + esc(x.写真ID) + '">写真</button>' : '') + '</div></div>';
+  }
+
+  /** 出庫（と戻し・返品・数の修正）。ボタンの文字が確認の代わり */
+  function outSheet(x) {
+    var lots = x.場所.slice().sort(function (a, b) { return (a.状態 === '新品' ? 0 : 1) - (b.状態 === '新品' ? 0 : 1); });
+    var st = { lot: lots[0], type: '出庫', site: store('zk_site') || '' };
+    var reqId = newReqId();
+    var o = openSheet('<div style="font-weight:700">' + esc(matLabel(x)) + '</div>' +
+      (lots.length > 1 ? '<div class="lbl">どれから</div>' + chips('lot', lots.map(function (l) { return [l.ロットID, esc(l.エリアID) + ' ' + esc(l.状態) + ' ' + esc(l.数量) + esc(x.単位)]; }), st.lot.ロットID) : '<div class="sub">' + esc(areaName(st.lot.エリアID)) + '・' + esc(st.lot.数量) + esc(x.単位) + '</div>') +
+      '<div class="lbl">数量（' + esc(x.単位) + '）</div><input class="qty" data-qty type="number" inputmode="decimal" step="any">' +
+      '<div data-sitebox><div class="lbl">現場</div>' + siteChips(st.site) + '</div>' +
+      '<div data-typebox class="hidden"><div class="lbl">種類</div>' + chips('type', [['出庫', '出庫'], ['戻し', '戻し'], ['返品', '返品'], ['修正', '数の修正']], '出庫') +
+      '<div data-why class="hidden"><div class="lbl">修正の理由（必須）</div><input data-reason placeholder="例：数え直し"></div></div>' +
+      '<button class="go" data-go disabled>数量を入れてください</button><button class="link" data-more>戻し・返品・数の修正はこちら</button><div data-out></div>');
+    var qty = $('[data-qty]', o);
+    function label() {
+      var q = Number(qty.value), b = $('[data-go]', o);
+      var ok = q && (st.type !== '出庫' || st.site) && (st.type !== '修正' || $('[data-reason]', o).value.trim());
+      b.disabled = !ok;
+      if (!q) { b.textContent = '数量を入れてください'; return; }
+      if (st.type === '出庫') b.textContent = st.site ? shortLabel(x) + ' ' + q + x.単位 + ' を ' + siteName(st.site) + ' へ出庫' : '現場を選んでください';
+      else if (st.type === '修正') b.textContent = '在庫を ' + (q > 0 ? '+' : '') + q + x.単位 + ' 修正する';
+      else b.textContent = shortLabel(x) + ' ' + q + x.単位 + ' を' + st.type + 'する';
+    }
+    onChips(o, function (name, v) {
+      if (name === 'lot') st.lot = lots.filter(function (l) { return l.ロットID === v; })[0];
+      if (name === 'site') { st.site = v; store('zk_site', v); }
+      if (name === 'type') { st.type = v; $('[data-sitebox]', o).classList.toggle('hidden', v === '修正'); $('[data-why]', o).classList.toggle('hidden', v !== '修正'); qty.placeholder = v === '修正' ? '増やす 5／減らす -5' : ''; }
+      label();
+    });
+    qty.addEventListener('input', label);
+    $('[data-reason]', o).addEventListener('input', label);
+    $('[data-more]', o).addEventListener('click', function () { $('[data-typebox]', o).classList.remove('hidden'); this.classList.add('hidden'); });
+    $('[data-go]', o).addEventListener('click', function () {
+      var q = Number(qty.value);
+      call('api_move', reqId, { ロットID: st.lot.ロットID, 種別: st.type, 数量: q, 現場ID: st.type === '修正' ? '' : st.site, 理由: $('[data-reason]', o).value.trim(), 版: st.lot.版 }).then(function (r) {
+        if (!r.ok) return msg($('[data-out]', o), r.conflict ? 'warn' : 'ng', r.message);
+        o.remove();
+        rememberMaterial(x.材料ID);
+        var mv = r.data.movement;
+        toast(st.type + 'しました（残り ' + r.data.lot.数量 + x.単位 + '）', function () { undoMovements([mv.履歴ID], st.type).then(refreshSearch); });
+        refreshSearch();
+      });
+    });
+    qty.focus();
+  }
+  function refreshSearch() { var q = $('#q'); if (q) q.dispatchEvent(new Event('input')); }
+
+  // ---------- 登録（棚卸し） ----------
+  var MARK = { '未調査': '', '調査中': 'doing', '確定': 'done' };
+  function showRegister(areaId) {
+    var st = { area: areaId || store('zk_area') || '', cond: '新品', mat: null, photo: '' };
+    var m = $('#main');
+    m.innerHTML = '<div class="row" style="justify-content:space-between;margin-top:4px"><div class="lbl" style="margin:0">エリア</div><button class="btn" id="qrBtn" style="min-height:40px">QRを撮る</button></div>' +
+      '<input type="file" accept="image/*" capture="environment" id="qrPhoto" class="hidden"><div id="areas"></div><div id="areaNote"></div>' +
+      '<div class="lbl">材料</div><div id="pk"></div>' +
+      '<div id="detail" class="hidden">' + chips('cond', [['新品', '新品'], ['端材', '端材'], ['旧品', '旧品'], ['中古', '中古']], '新品') +
+      '<div data-qbox><div class="lbl" id="qlbl">数量</div><input class="qty" id="qty" type="number" inputmode="decimal" step="any"></div>' +
+      '<div data-lbox class="hidden"><div class="lbl">端材の長さ（1本ずつ、空白かカンマ区切り）</div><input class="qty" id="lens" inputmode="decimal" placeholder="12 8 3.5"></div>' +
+      '<button class="link" id="photoBtn">写真を付ける（任意）</button><input type="file" accept="image/*" capture="environment" id="photo" class="hidden"><span class="sub" id="photoNote"></span>' +
+      '<button class="go" id="reg" disabled>数量を入れてください</button><div id="regOut"></div></div>' +
+      '<div id="areaList"></div>';
+    function drawAreas() {
+      $('#areas').innerHTML = chips('area', S.data.areas.map(function (a) { return [a.エリアID, '<span class="mark ' + MARK[a.調査状態] + '"></span>' + esc(a.エリアID)]; }), st.area);
+      var a = S.data.areas.filter(function (x) { return x.エリアID === st.area; })[0];
+      $('#areaNote').innerHTML = !a ? '<div class="sub">エリアを選んでください（○未調査 ◐調査中 ●確定）</div>' :
+        '<div class="sub">' + esc(a.名称) + '・' + esc(a.調査状態) + (a.調査状態 === '未調査' ? '（最初の登録で調査開始になります）' : '') + '</div>' +
+        (a.調査状態 === '確定' ? '<div class="msg warn">確定済みのエリアです。登録すると「追加登録」になります</div>' : '');
+      label();
+      loadAreaList();
+    }
+    function label() {
+      var b = $('#reg'); if (!b) return;
+      var a = S.data.areas.filter(function (x) { return x.エリアID === st.area; })[0];
+      var mat = pk.value();
+      var unit = mat ? (mat.単位 || '') : '';
+      var name = mat ? (mat.新規 ? mat.品名 : shortLabel(mat)) : '';
+      if (st.cond === '端材') {
+        var ls = $('#lens').value.split(/[,、\s]+/).map(Number).filter(function (x) { return x > 0; });
+        b.disabled = !(a && mat && ls.length);
+        b.textContent = !a ? 'エリアを選んでください' : !ls.length ? '長さを入れてください' : (a.調査状態 === '確定' ? '追加登録：' : '登録：') + name + ' 端材' + ls.length + '本（' + a.エリアID + '）';
+      } else {
+        var q = Number($('#qty').value);
+        b.disabled = !(a && mat && q > 0);
+        b.textContent = !a ? 'エリアを選んでください' : !q ? '数量を入れてください' : (a.調査状態 === '確定' ? '追加登録：' : '登録：') + name + ' ' + q + unit + (st.cond === '新品' ? '' : '（' + st.cond + '）') + '（' + a.エリアID + '）';
+      }
+    }
+    var pk = picker($('#pk'), { allowNew: true, onChange: function (mat) {
+      $('#detail').classList.toggle('hidden', !mat);
+      if (mat && !mat.新規) { $('#qlbl').textContent = '数量（' + (mat.単位 || '') + '）'; setTimeout(function () { $('#qty').focus(); }, 50); }
+      label();
+    } });
+    onChips(m, function (name, v) {
+      if (name === 'area') { st.area = v; store('zk_area', v); drawAreas(); }
+      if (name === 'cond') { st.cond = v; $('[data-qbox]').classList.toggle('hidden', v === '端材'); $('[data-lbox]').classList.toggle('hidden', v !== '端材'); (v === '端材' ? $('#lens') : $('#qty')).focus(); label(); }
+    });
+    $('#qty').addEventListener('input', label);
+    $('#lens').addEventListener('input', label);
+    $('#photoBtn').addEventListener('click', function () { $('#photo').click(); });
+    $('#qrBtn').addEventListener('click', function () { $('#qrPhoto').click(); });
+    $('#qrPhoto').addEventListener('change', function () {
+      var f = this.files[0]; this.value = ''; if (!f) return;
+      readQr(f).then(function (text) {
+        var m2 = /^ZAIKO-AREA:([A-Za-z0-9-]{1,20})$/.exec(text || '') || /[?&]area=([A-Za-z0-9-]+)/.exec(text || '');
+        var id = m2 ? m2[1].toUpperCase() : '';
+        if (!id) return toast('QRコードを読み取れませんでした。QRが大きく写るように撮り直してください');
+        if (!S.data.areas.some(function (a) { return a.エリアID === id; })) return toast('エリア ' + id + ' は登録されていません');
+        st.area = id; store('zk_area', id); drawAreas(); pk.focus();
+        toast(id + ' を選びました');
+      }).catch(function () { toast('QRコードを読み取れませんでした。もう一度撮ってください'); });
+    });
+    $('#photo').addEventListener('change', function () {
+      var f = this.files[0]; if (!f) return;
+      $('#photoNote').textContent = '写真を保存中…';
+      resizePhoto(f).then(function (d) { return call('api_uploadPhoto', newReqId(), d); }).then(function (r) {
+        if (!r.ok) { $('#photoNote').textContent = r.message; return; }
+        st.photo = r.data.写真ID; $('#photoNote').textContent = '写真あり';
+      }).catch(function () { $('#photoNote').textContent = '写真を読み込めませんでした'; });
+    });
+    var reqId = newReqId();
+    $('#reg').addEventListener('click', function () {
+      var mat = pk.value();
+      var a = S.data.areas.filter(function (x) { return x.エリアID === st.area; })[0];
+      var p = { エリアID: st.area, 状態: st.cond, 写真ID: st.photo, 確定済みでも登録: a && a.調査状態 === '確定' };
+      if (mat.新規) { p.新規材料 = mat.新規材料; p.単位 = mat.単位; } else p.材料ID = mat.材料ID;
+      if (st.cond === '端材') p.長さ = $('#lens').value.split(/[,、\s]+/).map(Number).filter(function (x) { return x > 0; });
+      else p.数量 = Number($('#qty').value);
+      var text = $('#reg').textContent.replace(/^(追加)?登録：/, '');
+      call('api_registerStock', reqId, p).then(function (r) {
+        if (!r.ok) return msg($('#regOut'), 'ng', r.message);
+        reqId = newReqId();
+        $('#regOut').innerHTML = '';
+        var ids = r.data.履歴IDs;
+        rememberMaterial(r.data.material.材料ID);
+        // エリアの状態（自動の調査開始）と新しい材料を反映
+        S.data.areas.forEach(function (x) { if (x.エリアID === r.data.エリア.エリアID) x.調査状態 = r.data.エリア.調査状態; });
+        (mat.新規 ? refreshBootstrap() : Promise.resolve()).then(function () {
+          st.photo = ''; $('#photoNote').textContent = '';
+          $('#qty').value = ''; $('#lens').value = '';
+          // 次の材料は一番多い「新品」から始める
+          st.cond = '新品';
+          $all('[data-chips="cond"] button').forEach(function (x) { x.classList.toggle('on', x.getAttribute('data-v') === '新品'); });
+          $('[data-qbox]').classList.remove('hidden'); $('[data-lbox]').classList.add('hidden');
+          pk.reset(); drawAreas(); pk.focus();
+          toast('登録しました：' + text, function () { undoMovements(ids, '登録').then(loadAreaList); });
+        });
+      });
+    });
+    function loadAreaList() {
+      if (!st.area) { $('#areaList').innerHTML = ''; return; }
+      call('api_area', st.area).then(function (r) {
+        if (!r.ok || !$('#areaList')) return;
+        var a = r.data.area;
+        $('#areaList').innerHTML = '<h3>' + esc(a.エリアID) + ' に登録済み（' + r.data.lots.length + '件）</h3>' +
+          (r.data.lots.length ? '<table>' + r.data.lots.map(function (l) { return '<tr><td>' + esc(l.品名) + (l.状態 !== '新品' ? '<span class="sub">（' + esc(l.状態) + '）</span>' : '') + '</td><td style="text-align:right;white-space:nowrap">' + esc(l.数量) + esc(l.単位) + '</td></tr>'; }).join('') + '</table>' : '<div class="sub">まだありません</div>') +
+          (a.調査状態 === '調査中' ? '<div class="sub" style="margin-top:8px">調査中：' + esc(r.data.調査担当者名) + '</div><button class="go2" id="confirmArea">' + esc(a.エリアID) + ' の棚卸しを確定する（全部登録した）</button>' : '');
+        var c = $('#confirmArea');
+        if (c) c.addEventListener('click', function () {
+          call('api_areaConfirm', newReqId(), a.エリアID).then(function (x) {
+            if (!x.ok) return toast(x.message);
+            S.data.areas.forEach(function (y) { if (y.エリアID === a.エリアID) y.調査状態 = '確定'; });
+            toast(a.エリアID + ' を確定しました'); drawAreas();
+          });
+        });
+      });
+    }
+    drawAreas();
+    if (st.area) pk.focus();
+  }
+
+  /** 写真に写ったQRコードを読む。読み取り部品は初回だけサーバーから取り寄せる */
+  var qrLib = null;
+  function loadQrLib() {
+    if (qrLib) return Promise.resolve(qrLib);
+    return call('api_qrLib').then(function (r) {
+      if (!r.ok) throw new Error(r.message);
+      qrLib = new Function(r.data + '\n;return typeof jsQR !== "undefined" ? jsQR : this.jsQR;').call(window);
+      return qrLib;
+    });
+  }
+  function readQr(file) {
+    return loadQrLib().then(function (jsQR) {
+      return new Promise(function (resolve, reject) {
+        var r = new FileReader();
+        r.onload = function () {
+          var img = new Image();
+          img.onload = function () {
+            // 大きすぎる写真は縮めてから読む（何段階か試す）
+            var sizes = [1000, 1600, 700];
+            for (var i = 0; i < sizes.length; i++) {
+              var k = Math.min(1, sizes[i] / Math.max(img.width, img.height));
+              var c = document.createElement('canvas');
+              c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+              var x = c.getContext('2d'); x.drawImage(img, 0, 0, c.width, c.height);
+              var d = x.getImageData(0, 0, c.width, c.height);
+              var res = jsQR(d.data, d.width, d.height);
+              if (res && res.data) return resolve(res.data);
+            }
+            resolve('');
+          };
+          img.onerror = reject; img.src = r.result;
+        };
+        r.onerror = reject; r.readAsDataURL(file);
+      });
+    });
+  }
+
+  function resizePhoto(file) {
+    return new Promise(function (resolve, reject) {
+      var r = new FileReader();
+      r.onload = function () {
+        var img = new Image();
+        img.onload = function () {
+          var k = Math.min(1, 1024 / Math.max(img.width, img.height));
+          var c = document.createElement('canvas');
+          c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+          c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+          resolve(c.toDataURL('image/jpeg', 0.7));
+        };
+        img.onerror = reject; img.src = r.result;
+      };
+      r.onerror = reject; r.readAsDataURL(file);
+    });
+  }
+
+  // ---------- 発注 ----------
+  var METHODS = ['電話', 'FAX', 'LINE', 'メール', 'その他'];
+  function supplierChips(sel) { return chips('sup', S.data.suppliers.map(function (s) { return [s.仕入先ID, esc(supName(s.仕入先ID))]; }), sel); }
+  function methodOf(supId) { var s = S.data.suppliers.filter(function (x) { return x.仕入先ID === supId; })[0]; return s && METHODS.indexOf(s.注文方法) >= 0 ? s.注文方法 : '電話'; }
+
+  function showOrder(pre) {
+    var st = { site: store('zk_site') || '', dest: '現場', sup: store('zk_sup') || (S.data.suppliers[0] || {}).仕入先ID || '', method: '', check: null };
+    st.method = methodOf(st.sup);
+    var m = $('#main');
+    m.innerHTML = '<div class="lbl" style="margin-top:4px">現場</div>' + siteChips(st.site) +
+      '<div class="lbl">材料</div><div id="pk"></div>' +
+      '<div class="lbl">必要な数量</div><input class="qty" id="need" type="number" inputmode="decimal" step="any">' +
+      '<div class="lbl">届け先</div>' + chips('dest', [['現場', '現場に直送'], ['倉庫', '倉庫']], '現場') +
+      '<div id="check"></div>' +
+      '<div id="orderBox" class="hidden"><div class="lbl">注文する数量</div><input class="qty" id="qty" type="number" inputmode="decimal" step="any">' +
+      '<div id="dupBox" class="hidden"><div class="lbl">同じ依頼がほかにあります。続ける理由</div><input id="dupWhy" placeholder="例：別工区の分"></div>' +
+      '<div class="lbl">電材屋</div>' + supplierChips(st.sup) +
+      '<div class="lbl">注文した方法</div>' + chips('method', METHODS.map(function (x) { return [x, x]; }), st.method) +
+      '<button class="go" id="placed" disabled>…</button><button class="go2" id="later">あとで注文する（リストに入れる）</button><div id="orderOut"></div></div>' +
+      '<div id="lists"></div>';
+    var pk = picker($('#pk'), { allowNew: false, onChange: function () { refresh(); } });
+    var refresh = debounce(function () {
+      if (!$('#need')) return; // 別のタブに移った後
+      var mat = pk.value(), need = Number($('#need').value);
+      if (!(st.site && mat && need > 0)) { $('#check').innerHTML = ''; $('#orderBox').classList.add('hidden'); return; }
+      call('api_preview', { 現場ID: st.site, 材料ID: mat.材料ID, 必要数量: need }).then(function (r) {
+        if (!$('#check')) return;
+        if (!r.ok) return msg($('#check'), 'ng', r.message);
+        var c = st.check = r.data, u = mat.単位 || '';
+        var lines = [];
+        if (c.使える新品) lines.push('倉庫に使える新品 <b>' + esc(c.使える新品) + esc(u) + '</b>（' + c.使える新品の内訳.map(function (x) { return esc(x.エリアID); }).join('・') + '）');
+        if (c.同現場の未納) lines.push('この現場向けに注文済みで未着 <b>' + esc(c.同現場の未納) + esc(u) + '</b>');
+        c.要確認の在庫.forEach(function (x) { lines.push('確認すれば使えるかも：' + esc(x.エリアID) + ' ' + esc(x.使える数) + esc(u) + '（' + esc(x.理由) + '）'); });
+        c.倉庫への入荷予定.forEach(function (x) { lines.push('倉庫へ入荷予定 ' + esc(x.未納) + esc(u) + '（納期 ' + esc(x.納期 || '未定') + '）'); });
+        $('#check').innerHTML = '<div class="msg ' + (c.発注候補数量 ? 'warn' : 'ok') + '">' + (c.発注候補数量 ? '発注が必要な目安：' + esc(c.発注候補数量) + esc(u) : '倉庫の在庫と注文済みの分で足りる見込みです') + '</div>' +
+          (lines.length ? '<div class="card" style="font-size:16px">' + lines.join('<br>') + '</div>' : '<div class="sub">倉庫に登録された在庫はありません</div>') +
+          c.注意.map(function (s) { return '<div class="sub">※' + esc(s) + '</div>'; }).join('') +
+          (c.重複の可能性.length ? '<div class="msg warn">同じ現場・同じ材料の依頼がほかに ' + c.重複の可能性.length + ' 件あります</div>' : '');
+        $('#dupBox').classList.toggle('hidden', !c.重複の可能性.length);
+        $('#qty').value = c.発注候補数量 || '';
+        $('#orderBox').classList.remove('hidden');
+        label();
+      });
+    }, 400);
+    function label() {
+      if (!$('#placed')) return;
+      var mat = pk.value(), q = Number($('#qty').value), b = $('#placed');
+      var needWhy = st.check && st.check.重複の可能性.length && !$('#dupWhy').value.trim();
+      b.disabled = !(mat && q > 0 && st.sup && st.method) || needWhy;
+      b.textContent = !q ? '注文する数量を入れてください' : needWhy ? '続ける理由を入れてください' : '注文した：' + shortLabel(mat) + ' ' + q + (mat.単位 || '') + '／' + supName(st.sup) + '（' + st.method + '）';
+      $('#later').disabled = b.disabled && !needWhy ? true : !!needWhy;
+    }
+    onChips(m, function (name, v) {
+      if (name === 'site') { st.site = v; store('zk_site', v); refresh(); }
+      if (name === 'dest') st.dest = v;
+      if (name === 'sup') { st.sup = v; store('zk_sup', v); st.method = methodOf(v); $all('[data-chips="method"] button', m).forEach(function (x) { x.classList.toggle('on', x.getAttribute('data-v') === st.method); }); }
+      if (name === 'method') st.method = v;
+      label();
+    });
+    $('#need').addEventListener('input', refresh);
+    $('#qty').addEventListener('input', label);
+    $('#dupWhy').addEventListener('input', label);
+    var reqId = newReqId();
+    function send(method) {
+      var mat = pk.value();
+      call('api_orderNow', reqId, { 現場ID: st.site, 材料ID: mat.材料ID, 数量: Number($('#qty').value), 納品先: st.dest, 仕入先ID: st.sup, 注文方法: method, 重複時の理由: $('#dupWhy').value.trim() }).then(function (r) {
+        if (!r.ok) return msg($('#orderOut'), 'ng', r.message);
+        reqId = newReqId();
+        rememberMaterial(mat.材料ID);
+        toast(method === 'あとで' ? '注文待ちリストに入れました（' + r.data.発注.発注番号 + '）' : '注文を記録しました（' + r.data.発注.発注番号 + '）');
+        pk.reset(); $('#need').value = ''; $('#qty').value = ''; $('#dupWhy').value = ''; st.check = null;
+        $('#check').innerHTML = ''; $('#orderBox').classList.add('hidden'); $('#orderOut').innerHTML = '';
+        loadLists();
+      });
+    }
+    $('#placed').addEventListener('click', function () { send(st.method); });
+    $('#later').addEventListener('click', function () { send('あとで'); });
+    if (pre && pre.材料ID) pk.set(matById(pre.材料ID));
+    loadLists();
+    if (!(pre && pre.材料ID)) pk.focus(); else $('#need').focus();
+  }
+
+  function loadLists() {
+    call('api_orders', {}).then(function (r) {
+      var box = $('#lists'); if (!box) return;
+      if (!r.ok) return msg(box, 'ng', r.message);
+      var waiting = r.data.filter(function (o) { return o.状態 === '発注案' || o.状態 === '送信待ち' || o.状態 === '送信結果不明'; });
+      var coming = r.data.filter(function (o) { return o.状態 === '発注済み' || o.状態 === '一部納品'; });
+      function head(o) {
+        return '<div class="row" style="justify-content:space-between"><b>' + esc(o.明細.map(function (l) { return l.品名規格; }).join('、')) + '</b></div>' +
+          '<div>' + o.明細.map(function (l) { return esc(l.納品済数量 ? l.納品済数量 + '/' : '') + esc(l.数量) + esc(l.単位); }).join('、') + '・' + esc(supName(o.仕入先ID)) + '</div>' +
+          '<div class="sub">' + esc(siteName(o.現場ID)) + '・' + (o.納品先 === '倉庫' ? '倉庫へ' : '現場直送') + '・' + esc(o.発注者名) + '・' + esc(o.発注番号) + (o.状態 === '一部納品' ? '・一部納品' : '') + '</div>';
+      }
+      box.innerHTML = (waiting.length ? '<h3>注文待ち（' + waiting.length + '件）</h3>' + waiting.map(function (o) {
+        return '<div class="card">' + head(o) + '<div class="row" style="margin-top:8px"><button class="btn" data-place="' + esc(o.発注ID) + '">注文した</button><button class="link" data-pdf="' + esc(o.発注ID) + '">注文書PDF</button><button class="link danger" data-cancel="' + esc(o.発注ID) + '">取りやめ</button></div></div>';
+      }).join('') : '') +
+        '<h3>届く予定（' + coming.length + '件）</h3>' + (coming.length ? coming.map(function (o) {
+        return '<div class="card">' + head(o) + '<div class="row" style="margin-top:8px"><button class="btn" data-recv="' + esc(o.発注ID) + '">届いた</button><button class="link danger" data-cancel="' + esc(o.発注ID) + '">キャンセル</button></div></div>';
+      }).join('') : '<div class="sub">ありません</div>') +
+        (S.me.権限 !== '一般' ? '<button class="link" id="verify" style="margin-top:16px">在庫と記録の突き合わせ（管理者）</button>' : '');
+      box.onclick = function (e) {
+        var t = e.target, id;
+        function find(x) { return r.data.filter(function (o) { return o.発注ID === x; })[0]; }
+        if ((id = t.getAttribute('data-place'))) placeSheet(find(id));
+        if ((id = t.getAttribute('data-recv'))) recvSheet(find(id));
+        if ((id = t.getAttribute('data-cancel'))) cancelSheet(find(id));
+        if ((id = t.getAttribute('data-pdf'))) call('api_orderPdf', newReqId(), id).then(function (x) {
+          if (!x.ok) return toast(x.message);
+          openSheet('<div class="msg ok">注文書を作りました（どこにも送っていません）</div><a class="go" style="text-align:center;line-height:60px;text-decoration:none" href="' + esc(x.data.url) + '" target="_blank" rel="noopener">開く</a>');
+        });
+        if (t.id === 'verify') call('api_verifyBalances').then(function (x) { toast(!x.ok ? x.message : x.data.差異.length ? '差異 ' + x.data.差異.length + ' 件あり（台帳を確認してください）' : '在庫と記録は一致しています'); });
+      };
+    });
+  }
+
+  function placeSheet(o) {
+    var st = { method: METHODS.indexOf(o.注文方法) >= 0 ? o.注文方法 : methodOf(o.仕入先ID) };
+    var reqId = newReqId();
+    var s = openSheet('<div style="font-weight:700">' + esc(supName(o.仕入先ID)) + ' に注文した</div><div class="lbl">方法</div>' + chips('method', METHODS.map(function (x) { return [x, x]; }), st.method) +
+      '<button class="go" data-go>注文した（' + esc(o.発注番号) + '）</button><div data-out></div>');
+    onChips(s, function (n, v) { st.method = v; });
+    $('[data-go]', s).addEventListener('click', function () {
+      call('api_orderPlace', reqId, o.発注ID, { 注文方法: st.method, 版: o.版 }).then(function (r) {
+        if (!r.ok) return msg($('[data-out]', s), r.conflict ? 'warn' : 'ng', r.message);
+        s.remove(); toast('注文を記録しました（' + o.発注番号 + '）'); loadLists();
+      });
+    });
+  }
+
+  function recvSheet(o) {
+    var st = { dest: o.納品先, area: store('zk_area') || '' };
+    var reqId = newReqId();
+    var s = openSheet('<div style="font-weight:700">届いた：' + esc(o.明細.map(function (l) { return l.品名規格; }).join('、')) + '</div>' +
+      '<div class="lbl">どこに届いた</div>' + chips('dest', [['現場', '現場'], ['倉庫', '倉庫']], st.dest) +
+      '<div data-abox class="' + (st.dest === '倉庫' ? '' : 'hidden') + '"><div class="lbl">倉庫のどこに置いた</div>' + chips('area', S.data.areas.map(function (a) { return [a.エリアID, esc(a.エリアID)]; }), st.area) + '</div>' +
+      '<button class="go" data-all>全部届いた</button><button class="link" data-part>一部だけ届いた</button><div data-partbox class="hidden"></div><div data-out></div>');
+    onChips(s, function (n, v) { if (n === 'dest') { st.dest = v; $('[data-abox]', s).classList.toggle('hidden', v !== '倉庫'); } if (n === 'area') { st.area = v; store('zk_area', v); } });
+    function done(r) { if (!r.ok) return msg($('[data-out]', s), 'ng', r.message); s.remove(); toast('受け取りを記録しました'); loadLists(); }
+    $('[data-all]', s).addEventListener('click', function () { call('api_receiveAll', reqId, o.発注ID, { 納品先: st.dest, エリアID: st.area }).then(done); });
+    $('[data-part]', s).addEventListener('click', function () {
+      var box = $('[data-partbox]', s); box.classList.remove('hidden');
+      box.innerHTML = o.明細.filter(function (l) { return Number(l.納品済数量) < Number(l.数量) && l.状態 !== 'キャンセル'; }).map(function (l) {
+        return '<div class="lbl">' + esc(l.品名規格) + '（未着 ' + esc(Number(l.数量) - Number(l.納品済数量)) + esc(l.単位) + '）</div><div class="row"><input class="qty" style="flex:1" type="number" inputmode="decimal" step="any" data-line="' + esc(l.明細ID) + '"><button class="btn" data-one="' + esc(l.明細ID) + '">この数だけ届いた</button></div>';
+      }).join('');
+      box.onclick = function (e) {
+        var id = e.target.getAttribute('data-one'); if (!id) return;
+        var q = Number($('[data-line="' + id + '"]', box).value);
+        call('api_receive', newReqId(), { 明細ID: id, 数量: q, 納品先: st.dest, エリアID: st.area }).then(done);
+      };
+    });
+  }
+
+  function cancelSheet(o) {
+    var reqId = newReqId();
+    var placed = o.状態 === '発注済み' || o.状態 === '一部納品';
+    var s = openSheet('<div style="font-weight:700">' + esc(o.発注番号) + ' を取りやめる</div>' + (placed ? '<div class="msg warn">注文済みです。先に電材屋へキャンセルを伝えてください</div>' : '') +
+      '<div class="lbl">理由（必須）</div><input data-why><button class="go" style="background:var(--ng)" data-go>取りやめる（記録は残ります）</button><div data-out></div>');
+    $('[data-go]', s).addEventListener('click', function () {
+      call('api_orderTransition', reqId, o.発注ID, 'キャンセル', { 理由: $('[data-why]', s).value.trim(), 版: o.版 }).then(function (r) {
+        if (!r.ok) return msg($('[data-out]', s), 'ng', r.message);
+        s.remove(); toast('取りやめを記録しました'); loadLists();
+      });
+    });
+  }
+
+  // ---------- 管理（管理・経営の人だけ） ----------
+  var ADMIN = { tab: 'emp', d: null };
+  function showAdmin() {
+    var m = $('#main');
+    m.innerHTML = chips('adm', [['emp', '社員'], ['site', '現場'], ['sup', '電材屋'], ['area', 'エリア・QR']], ADMIN.tab) + '<div id="adm"></div>';
+    onChips(m, function (n, v) { if (n === 'adm') { ADMIN.tab = v; drawAdmin(); } });
+    loadAdmin();
+  }
+  function loadAdmin() {
+    return call('api_adminData').then(function (r) {
+      if (!r.ok) return msg($('#adm'), 'ng', r.message);
+      ADMIN.d = r.data; drawAdmin();
+    });
+  }
+  function afterSave(text) {
+    toast(text);
+    return Promise.all([loadAdmin(), refreshBootstrap()]);
+  }
+  function row(label, sub, attr) {
+    return '<button class="pick" ' + attr + '><b>' + esc(label) + '</b><br><span class="sub">' + sub + '</span></button>';
+  }
+  function drawAdmin() {
+    var box = $('#adm'); if (!box || !ADMIN.d) return;
+    var d = ADMIN.d, t = ADMIN.tab, h = '';
+    if (t === 'emp') {
+      h = '<button class="go2" data-add="emp">＋ 社員を追加してリンクを発行</button>' + d.employees.map(function (e) {
+        return row(e.氏名, esc(e.権限) + (e.価格表示 ? '・単価を見られる' : '') + (e.有効 ? '' : '・<b>停止中</b>'), 'data-emp="' + esc(e.社員ID) + '"');
+      }).join('');
+    }
+    if (t === 'site') {
+      h = '<button class="go2" data-add="site">＋ 現場を追加</button>' + d.sites.slice().reverse().map(function (s) {
+        return row(s.現場名, esc(s.状態) + (s.元請 ? '・' + esc(s.元請) : ''), 'data-site="' + esc(s.現場ID) + '"');
+      }).join('');
+    }
+    if (t === 'sup') {
+      h = '<button class="go2" data-add="sup">＋ 電材屋を追加</button>' + d.suppliers.map(function (s) {
+        return row(s.社名, esc(s.注文方法) + (s.担当者 ? '・' + esc(s.担当者) : '') + (s.連絡先 ? '・' + esc(s.連絡先) : ''), 'data-sup="' + esc(s.仕入先ID) + '"');
+      }).join('');
+    }
+    if (t === 'area') {
+      h = '<button class="go" data-qrpdf>QRラベルを印刷用PDFで作る（全エリア）</button><div class="sub">A4に8枚。印刷して棚・箱に貼ってください。アプリの「登録」→「QRを撮る」でラベルを撮ると、そのエリアが選ばれます。</div>' +
+        '<button class="go2" data-add="area">＋ エリアを追加</button>' + d.areas.map(function (a) {
+          return row(a.エリアID + ' ' + a.名称, esc(a.種類) + '・' + esc(a.調査状態), 'data-area="' + esc(a.エリアID) + '"');
+        }).join('');
+    }
+    box.innerHTML = h;
+    box.onclick = function (e) {
+      var b = e.target.closest('button'); if (!b) return;
+      var add = b.getAttribute('data-add');
+      if (add === 'emp' || b.hasAttribute('data-emp')) empSheet(d.employees.filter(function (x) { return x.社員ID === b.getAttribute('data-emp'); })[0]);
+      if (add === 'site' || b.hasAttribute('data-site')) siteSheet(d.sites.filter(function (x) { return x.現場ID === b.getAttribute('data-site'); })[0]);
+      if (add === 'sup' || b.hasAttribute('data-sup')) supSheet(d.suppliers.filter(function (x) { return x.仕入先ID === b.getAttribute('data-sup'); })[0]);
+      if (add === 'area' || b.hasAttribute('data-area')) areaSheet(d.areas.filter(function (x) { return x.エリアID === b.getAttribute('data-area'); })[0]);
+      if (b.hasAttribute('data-qrpdf')) call('api_adminQrPdf', newReqId()).then(function (r) {
+        if (!r.ok) return toast(r.message);
+        openSheet('<div class="msg ok">QRラベル ' + esc(r.data.枚数) + '枚分のPDFを作りました（どこにも送っていません）</div><a class="go" style="text-align:center;line-height:60px;text-decoration:none" href="' + esc(r.data.url) + '" target="_blank" rel="noopener">開いて印刷する</a>');
+      });
+    };
+  }
+  function field(name, label, value, ph) {
+    return '<div class="lbl">' + esc(label) + '</div><input data-f="' + esc(name) + '" value="' + esc(value || '') + '" placeholder="' + esc(ph || '') + '">';
+  }
+  function values(s) { var o = {}; $all('[data-f]', s).forEach(function (i) { o[i.getAttribute('data-f')] = i.value.trim(); }); return o; }
+  /** 共通の編集シート。save(p) は保存APIを呼ぶ関数 */
+  function editSheet(title, body, collect, save, extra) {
+    var reqId = newReqId();
+    var s = openSheet('<div style="font-weight:700;font-size:20px">' + esc(title) + '</div>' + body + '<button class="go" data-save>保存する</button>' + (extra || '') + '<div data-out></div>');
+    var st = {};
+    onChips(s, function (n, v) { st[n] = v; });
+    $('[data-save]', s).addEventListener('click', function () {
+      save(reqId, collect(s, st)).then(function (r) {
+        if (!r.ok) return msg($('[data-out]', s), 'ng', r.message);
+        s.remove();
+        if (r.data && r.data.link) linkSheet(r.data.社員.氏名, r.data.link);
+        afterSave('保存しました');
+      });
+    });
+    return s;
+  }
+  function linkSheet(name, link) {
+    var s = openSheet('<div style="font-weight:700;font-size:20px">' + esc(name) + ' さんの自分用リンク</div>' +
+      '<div class="msg warn">この画面を閉じると二度と表示されません。本人だけに送ってください（グループのトークには貼らない）。</div>' +
+      '<input readonly data-link value="' + esc(link) + '"><button class="go" data-copy>リンクをコピー</button>');
+    $('[data-copy]', s).addEventListener('click', function () {
+      var i = $('[data-link]', s); i.select();
+      var done = function () { $('[data-copy]', s).textContent = 'コピーしました'; };
+      if (navigator.clipboard) navigator.clipboard.writeText(link).then(done, function () { document.execCommand('copy'); done(); });
+      else { document.execCommand('copy'); done(); }
+    });
+  }
+  function empSheet(e) {
+    var roles = ADMIN.d.canManageTop ? [['一般', '一般'], ['管理', '管理'], ['経営', '経営']] : [['一般', '一般'], ['管理', '管理']];
+    var self = e && e.社員ID === S.me.社員ID;
+    var body = field('氏名', '氏名', e && e.氏名, '例：山田 太郎') +
+      (self ? '<div class="sub">自分の権限と利用停止は、ほかの管理者に依頼してください</div>' : '<div class="lbl">権限</div>' + chips('権限', roles, e ? e.権限 : '一般')) +
+      '<div class="lbl">単価・仕入値</div>' + chips('価格表示', [['no', '見せない'], ['yes', '見せる']], e && e.価格表示 ? 'yes' : 'no') +
+      (e && !self ? '<div class="lbl">利用</div>' + chips('有効', [['yes', '使える'], ['no', '停止する']], e.有効 ? 'yes' : 'no') : '');
+    var s = editSheet(e ? e.氏名 + ' さん' : '社員を追加', body, function (s, st) {
+      var p = { 氏名: values(s).氏名, 価格表示: (st.価格表示 || (e && e.価格表示 ? 'yes' : 'no')) === 'yes' };
+      if (!self) p.権限 = st.権限 || (e ? e.権限 : '一般');
+      if (e) { p.社員ID = e.社員ID; if (!self) p.有効 = (st.有効 || (e.有効 ? 'yes' : 'no')) === 'yes'; }
+      return p;
+    }, function (reqId, p) { return call('api_adminSaveEmployee', reqId, p); },
+    e ? '<button class="go2" data-reissue>リンクを作り直す（古いリンクは使えなくなる）</button>' : '');
+    var re = $('[data-reissue]', s);
+    if (re) re.addEventListener('click', function () {
+      if (re.getAttribute('data-sure') !== '1') { re.setAttribute('data-sure', '1'); re.textContent = 'もう一度押すと作り直します'; return; }
+      call('api_adminReissue', newReqId(), e.社員ID).then(function (r) {
+        if (!r.ok) return msg($('[data-out]', s), 'ng', r.message);
+        s.remove(); linkSheet(e.氏名, r.data.link); afterSave('リンクを作り直しました');
+      });
+    });
+  }
+  function siteSheet(x) {
+    editSheet(x ? x.現場名 : '現場を追加', field('現場名', '現場名', x && x.現場名, '例：山田邸新築') + field('元請', '元請', x && x.元請) + field('住所', '住所（現場直送の注文書に載ります）', x && x.住所) +
+      (x ? '<div class="lbl">状態</div>' + chips('状態', [['進行中', '進行中'], ['完了', '完了（選択肢から外す）']], x.状態) : ''),
+      function (s, st) { var p = values(s); if (x) { p.現場ID = x.現場ID; if (st.状態) p.状態 = st.状態; } return p; },
+      function (reqId, p) { return call('api_adminSaveSite', reqId, p); });
+  }
+  function supSheet(x) {
+    editSheet(x ? x.社名 : '電材屋を追加', field('社名', '社名', x && x.社名) + field('担当者', '担当者', x && x.担当者) +
+      '<div class="lbl">いつもの注文方法</div>' + chips('注文方法', METHODS.map(function (v) { return [v, v]; }), x ? x.注文方法 : '電話') +
+      field('連絡先', '電話・FAX・メール', x && x.連絡先) +
+      '<div class="lbl">現場への直送</div>' + chips('現場直送', [['yes', 'できる'], ['no', 'できない']], x && x.現場直送 === false ? 'no' : 'yes'),
+      function (s, st) {
+        var p = values(s);
+        p.注文方法 = st.注文方法 || (x ? x.注文方法 : '電話');
+        p.現場直送 = (st.現場直送 || (x && x.現場直送 === false ? 'no' : 'yes')) === 'yes';
+        if (x) p.仕入先ID = x.仕入先ID;
+        return p;
+      },
+      function (reqId, p) { return call('api_adminSaveSupplier', reqId, p); });
+  }
+  function areaSheet(x) {
+    editSheet(x ? x.エリアID + ' ' + x.名称 : 'エリアを追加',
+      (x ? '' : field('エリアID', 'エリア番号（英数字。例：A-04）', '', 'A-04')) + field('名称', '名前', x && x.名称, '例：入口の棚 2段目') +
+      '<div class="lbl">種類</div>' + chips('種類', [['棚', '棚'], ['床置き', '床置き'], ['箱', '箱'], ['その他', 'その他']], x ? x.種類 : '棚') + field('位置', '場所の説明（任意）', x && x.位置),
+      function (s, st) { var p = values(s); p.種類 = st.種類 || (x ? x.種類 : '棚'); if (x) p.エリアID = x.エリアID; else p.新規 = true; return p; },
+      function (reqId, p) { return call('api_adminSaveArea', reqId, p); });
+  }
+
+  // ---------- 起動 ----------
+  function switchTab(tab, arg) {
+    $all('#nav button').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-tab') === tab); });
+    $('#toast').classList.add('hidden');
+    if (tab === 'search') showSearch();
+    if (tab === 'register') showRegister(arg);
+    if (tab === 'order') showOrder(arg);
+    if (tab === 'admin') showAdmin();
+  }
+  function refreshBootstrap() {
+    return call('api_bootstrap').then(function (r) { if (r.ok) { S.data = r.data; S.me = r.data.me; } return r; });
+  }
+  function start() {
+    // Google上の画面ではサーバーが埋め込んだ値、Googleの外の画面ではアドレスの #t= / ?t= から読む
+    function fromUrl(key, re) {
+      var m = new RegExp('[#?&]' + key + '=([^&#]*)').exec(location.hash + '&' + location.search);
+      var v = m ? decodeURIComponent(m[1]) : '';
+      return re.test(v) ? v : '';
+    }
+    var token = document.body.getAttribute('data-token') || fromUrl('t', /^[a-f0-9]{32,128}$/);
+    var area = document.body.getAttribute('data-area') || fromUrl('area', /^[A-Za-z0-9-]{1,20}$/);
+    var fresh = !!token;
+    if (token) store('zk_token', token); else token = store('zk_token') || '';
+    S.token = token;
+    if (!token) { $('#who').textContent = ''; $('#main').innerHTML = '<div class="msg warn">このページは「自分用のリンク」から開いてください。リンクは管理者から届きます。</div><div class="card">倉庫のQRコードは、カメラで直接読むのではなく、アプリの「登録」→「QRを撮る」で読み取ってください。<br><br>自分用のリンクを開いたら、ブラウザの共有ボタンから「ホーム画面に追加」しておくと、次からアイコンですぐ開けます。</div>'; return; }
+    refreshBootstrap().then(function (r) {
+      if (!r.ok) { $('#who').textContent = ''; return msg($('#main'), 'ng', r.message); }
+      $('#who').textContent = S.me.氏名 + ' さん【テスト環境】';
+      if (S.me.権限 === '管理' || S.me.権限 === '経営') $('#adminTab').classList.remove('hidden');
+      $('#nav').addEventListener('click', function (e) { var b = e.target.closest('button'); if (b) switchTab(b.getAttribute('data-tab')); });
+      if (area) { store('zk_area', area); switchTab('register', area); } else switchTab('search');
+      if (fresh && store('zk_tip') !== '1') {
+        toast('ホーム画面に追加すると、次からアイコンで開けます（ブラウザの共有ボタン→「ホーム画面に追加」）');
+        store('zk_tip', '1');
+      }
+    });
+  }
+  start();
+})();
+</script>
+</body>
+</html>
