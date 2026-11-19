@@ -820,7 +820,7 @@
     if (!token) { $('#who').textContent = ''; $('#main').innerHTML = '<div class="msg warn">このページは「自分用のリンク」から開いてください。リンクは管理者から届きます。</div><div class="card">倉庫のQRコードから開いた場合は、先に自分用のリンクをこのブラウザで一度開いてください。そのあとはQRからそのまま開けます。<br><br>自分用のリンクを開いたら、ブラウザの共有ボタンから「ホーム画面に追加」しておくと、次からアイコンですぐ開けます。</div>'; return; }
     refreshBootstrap().then(function (r) {
       if (!r.ok) { $('#who').textContent = ''; return msg($('#main'), 'ng', r.message); }
-      $('#who').textContent = S.me.氏名 + ' さん【テスト環境】';
+      $('#who').textContent = S.me.氏名 + ' さん' + (S.data.環境 === '本番' ? '' : '【テスト環境】');
       if (S.me.権限 === '管理' || S.me.権限 === '経営') $('#adminTab').classList.remove('hidden');
       $('#nav').addEventListener('click', function (e) { var b = e.target.closest('button'); if (b) switchTab(b.getAttribute('data-tab')); });
       if (area) { store('zk_area', area); switchTab('register', area); } else switchTab('search');
