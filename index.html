@@ -678,7 +678,7 @@
     var d = ADMIN.d, t = ADMIN.tab, h = '';
     if (t === 'emp') {
       h = '<button class="go2" data-add="emp">＋ 社員を追加してリンクを発行</button>' + d.employees.map(function (e) {
-        return row(e.氏名, esc(e.権限) + (e.価格表示 ? '・単価を見られる' : '') + (e.有効 ? '' : '・<b>停止中</b>'), 'data-emp="' + esc(e.社員ID) + '"');
+        return row(e.氏名, esc(e.権限) + (d.priceEnabled && e.価格表示 ? '・単価を見られる' : '') + (e.有効 ? '' : '・<b>停止中</b>'), 'data-emp="' + esc(e.社員ID) + '"');
       }).join('');
     }
     if (t === 'site') {
@@ -747,7 +747,7 @@
     var self = e && e.社員ID === S.me.社員ID;
     var body = field('氏名', '氏名', e && e.氏名, '例：山田 太郎') +
       (self ? '<div class="sub">自分の権限と利用停止は、ほかの管理者に依頼してください</div>' : '<div class="lbl">権限</div>' + chips('権限', roles, e ? e.権限 : '一般')) +
-      '<div class="lbl">単価・仕入値</div>' + chips('価格表示', [['no', '見せない'], ['yes', '見せる']], e && e.価格表示 ? 'yes' : 'no') +
+      (ADMIN.d.priceEnabled ? '<div class="lbl">単価・仕入値</div>' + chips('価格表示', [['no', '見せない'], ['yes', '見せる']], e && e.価格表示 ? 'yes' : 'no') : '') +
       (e && !self ? '<div class="lbl">利用</div>' + chips('有効', [['yes', '使える'], ['no', '停止する']], e.有効 ? 'yes' : 'no') : '');
     var s = editSheet(e ? e.氏名 + ' さん' : '社員を追加', body, function (s, st) {
       var p = { 氏名: values(s).氏名, 価格表示: (st.価格表示 || (e && e.価格表示 ? 'yes' : 'no')) === 'yes' };
