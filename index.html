@@ -225,7 +225,8 @@
   // ---------- 探す ----------
   function showSearch() {
     var m = $('#main');
-    m.innerHTML = '<input id="q" placeholder="材料名・型番で探す（例：vvf2.0）" autocomplete="off"><div id="res"></div>';
+    m.innerHTML = '<div class="row"><input id="q" placeholder="材料名・型番で探す（例：vvf2.0）" autocomplete="off" style="flex:1"><button class="btn" id="camSearch">写真で探す</button></div>' +
+      '<input type="file" accept="image/*" capture="environment" id="camSearchPhoto" class="hidden"><div id="res"></div>';
     var run = debounce(function () {
       if (!$('#q')) return; // 別のタブに移った後
       var q = $('#q').value.trim();
@@ -246,6 +247,15 @@
       if (o) switchTab('order', { 材料ID: o.getAttribute('data-order') });
       var p = e.target.closest('[data-photo]');
       if (p) call('api_photo', p.getAttribute('data-photo')).then(function (r) { if (r.ok) openSheet('<img class="photo" src="' + esc(r.data) + '">'); });
+    });
+    $('#camSearch').addEventListener('click', function () { $('#camSearchPhoto').click(); });
+    $('#camSearchPhoto').addEventListener('change', function () {
+      var f = this.files[0]; this.value = ''; if (!f) return;
+      photoCandidates(f, function (mat) {
+        if (!mat || !$('#q')) return;
+        $('#q').value = shortLabel(mat);
+        $('#q').dispatchEvent(new Event('input'));
+      });
     });
     $('#q').focus();
   }
@@ -317,7 +327,8 @@
     var m = $('#main');
     m.innerHTML = '<div class="row" style="justify-content:space-between;margin-top:4px"><div class="lbl" style="margin:0">エリア</div><button class="btn" id="qrBtn" style="min-height:40px">QRを撮る</button></div>' +
       '<input type="file" accept="image/*" capture="environment" id="qrPhoto" class="hidden"><div id="areas"></div><div id="areaNote"></div>' +
-      '<div class="lbl">材料</div><div id="pk"></div>' +
+      '<div class="row" style="justify-content:space-between;margin-top:12px"><div class="lbl" style="margin:0">材料</div><button class="btn" id="camBtn" style="min-height:40px">写真で選ぶ</button></div>' +
+      '<input type="file" accept="image/*" capture="environment" id="camPhoto" class="hidden"><div id="pk"></div>' +
       '<div id="detail" class="hidden">' + chips('cond', [['新品', '新品'], ['端材', '端材'], ['旧品', '旧品'], ['中古', '中古']], '新品') +
       '<div data-qbox><div class="lbl" id="qlbl">数量</div><input class="qty" id="qty" type="number" inputmode="decimal" step="any"></div>' +
       '<div data-lbox class="hidden"><div class="lbl">端材の長さ（1本ずつ、空白かカンマ区切り）</div><input class="qty" id="lens" inputmode="decimal" placeholder="12 8 3.5"></div>' +
@@ -362,6 +373,14 @@
     $('#lens').addEventListener('input', label);
     $('#photoBtn').addEventListener('click', function () { $('#photo').click(); });
     $('#qrBtn').addEventListener('click', function () { $('#qrPhoto').click(); });
+    $('#camBtn').addEventListener('click', function () { $('#camPhoto').click(); });
+    $('#camPhoto').addEventListener('change', function () {
+      var f = this.files[0]; this.value = ''; if (!f) return;
+      photoCandidates(f, function (mat, photoId) {
+        st.photo = photoId; $('#photoNote').textContent = '写真あり';
+        if (mat) pk.set(mat); else pk.focus();
+      });
+    });
     $('#qrPhoto').addEventListener('change', function () {
       var f = this.files[0]; this.value = ''; if (!f) return;
       readQr(f).then(function (text) {
@@ -469,17 +488,51 @@
     });
   }
 
-  function resizePhoto(file) {
+  /**
+   * 写真の文字から材料の候補を出す（Googleの無料の文字認識）。
+   * done(material|null, 写真ID) を呼ぶ。候補が無いときや「どれでもない」は material = null
+   */
+  function photoCandidates(file, done) {
+    toast('写真の文字を読み取っています…（10秒ほど）');
+    resizePhoto(file, 1600, 0.85).then(function (d) {
+      return call('api_uploadPhoto', newReqId(), d);
+    }).then(function (up) {
+      if (!up.ok) throw new Error(up.message);
+      return call('api_photoText', up.data.写真ID);
+    }).then(function (r) {
+      $('#toast').classList.add('hidden');
+      if (!r.ok) throw new Error(r.message);
+      var c = r.data.候補;
+      if (!c.length) {
+        toast('材料の名前や型番を読み取れませんでした。文字で探してください');
+        return done(null, r.data.写真ID);
+      }
+      var s = openSheet('<div style="font-weight:700;font-size:20px">写真の材料はどれですか？</div>' +
+        c.map(function (x, i) { return '<button class="pick' + (i === 0 ? ' picked' : '') + '" data-cand="' + esc(x.材料ID) + '">' + esc(x.品名) + '</button>'; }).join('') +
+        '<button class="link" data-none>どれでもない（文字で探す）</button>' +
+        '<div class="sub">読み取った文字：' + esc(r.data.読み取った文字 || '（なし）') + '</div>');
+      s.addEventListener('click', function (e) {
+        var b = e.target.closest('[data-cand]');
+        if (b) { s.remove(); done(matById(b.getAttribute('data-cand')), r.data.写真ID); }
+        if (e.target.hasAttribute('data-none')) { s.remove(); done(null, r.data.写真ID); }
+      });
+    }).catch(function (e) {
+      toast((e && e.message) || '写真を読み取れませんでした');
+    });
+  }
+
+  function resizePhoto(file, max, quality) {
+    max = max || 1024; quality = quality || 0.7;
     return new Promise(function (resolve, reject) {
       var r = new FileReader();
       r.onload = function () {
         var img = new Image();
         img.onload = function () {
-          var k = Math.min(1, 1024 / Math.max(img.width, img.height));
+          var k = Math.min(1, max / Math.max(img.width, img.height));
           var c = document.createElement('canvas');
           c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
           c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-          resolve(c.toDataURL('image/jpeg', 0.7));
+          resolve(c.toDataURL('image/jpeg', quality));
         };
         img.onerror = reject; img.src = r.result;
       };
