@@ -810,12 +810,19 @@
     try { history.replaceState(null, '', location.pathname); } catch (e) { /* 古い端末では何もしない */ }
     var m = $('#main');
     m.innerHTML = '<div class="card"><div class="big">本番の台帳を作ります</div><p>藤井（社長）・藤井 晃己・北本 の3人が使える本番の台帳を作り、3人分の自分用リンクを表示します。今までのテストのリンクは使えなくなります。</p><button class="go" id="mk">本番の台帳を作る</button><div id="mkOut"></div></div>';
+    var redo = false;
     $('#mk').addEventListener('click', function () {
-      $('#mk').disabled = true; $('#mk').textContent = '作っています…（30秒ほど）';
+      $('#mk').disabled = true; $('#mk').textContent = redo ? '作り直しています…' : '作っています…（30秒ほど）';
       google.script.run
         .withSuccessHandler(function (r) {
+          if (r && r.code === 'exists' && !redo) {
+            redo = true;
+            msg($('#mkOut'), 'warn', r.message);
+            $('#mk').disabled = false; $('#mk').textContent = '3人分のリンクを作り直す';
+            return;
+          }
           if (!r || !r.ok) { $('#mk').classList.add('hidden'); return msg($('#mkOut'), 'ng', (r && r.message) || '作れませんでした'); }
-          m.innerHTML = '<div class="msg ok">本番の台帳を作りました</div><div class="msg warn">下のリンクは、それぞれ本人だけが使うものです。この画面を閉じると二度と表示されません。1つずつ「コピー」を押して、本人に個別に送ってください（グループには貼らない）。スクリーンショットは撮らないでください。</div>' +
+          m.innerHTML = '<div class="msg ok">' + (r.data.作り直し ? '3人分のリンクを作り直しました（前のリンクは使えません）' : '本番の台帳を作りました') + '</div><div class="msg warn">下のリンクは、それぞれ本人だけが使うものです。この画面を閉じると二度と表示されません。1つずつ「コピー」を押して、本人に個別に送ってください（グループには貼らない）。スクリーンショットは撮らないでください。</div>' +
             r.data.links.map(function (l, i) {
               return '<div class="card"><b>' + esc(l.氏名) + '</b>（' + esc(l.権限) + '）<input readonly data-i="' + i + '" value="' + esc(l.url) + '" style="margin-top:6px;font-size:14px"><button class="go2" data-copy="' + i + '">コピー</button></div>';
             }).join('');
@@ -831,7 +838,7 @@
           $('#mk').disabled = false; $('#mk').textContent = 'もう一度押す';
           msg($('#mkOut'), 'ng', '通信できませんでした。電波の良い所でもう一度押してください（二重に作られることはありません）');
         })
-        .api_setupProduction(key);
+        .api_setupProduction(key, redo ? { 作り直す: true } : {});
     });
   }
 
