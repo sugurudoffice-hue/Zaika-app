@@ -802,6 +802,39 @@
     if (tab === 'order') showOrder(arg);
     if (tab === 'admin') showAdmin();
   }
+  /** 本番の台帳を作る（初期設定のアドレス #setup=… から開いたときだけ） */
+  function showSetup(key) {
+    $('#who').textContent = '初期設定';
+    $('#nav').classList.add('hidden');
+    // 合言葉をアドレス欄や履歴に残さない
+    try { history.replaceState(null, '', location.pathname); } catch (e) { /* 古い端末では何もしない */ }
+    var m = $('#main');
+    m.innerHTML = '<div class="card"><div class="big">本番の台帳を作ります</div><p>藤井（社長）・藤井 晃己・北本 の3人が使える本番の台帳を作り、3人分の自分用リンクを表示します。今までのテストのリンクは使えなくなります。</p><button class="go" id="mk">本番の台帳を作る</button><div id="mkOut"></div></div>';
+    $('#mk').addEventListener('click', function () {
+      $('#mk').disabled = true; $('#mk').textContent = '作っています…（30秒ほど）';
+      google.script.run
+        .withSuccessHandler(function (r) {
+          if (!r || !r.ok) { $('#mk').classList.add('hidden'); return msg($('#mkOut'), 'ng', (r && r.message) || '作れませんでした'); }
+          m.innerHTML = '<div class="msg ok">本番の台帳を作りました</div><div class="msg warn">下のリンクは、それぞれ本人だけが使うものです。この画面を閉じると二度と表示されません。1つずつ「コピー」を押して、本人に個別に送ってください（グループには貼らない）。スクリーンショットは撮らないでください。</div>' +
+            r.data.links.map(function (l, i) {
+              return '<div class="card"><b>' + esc(l.氏名) + '</b>（' + esc(l.権限) + '）<input readonly data-i="' + i + '" value="' + esc(l.url) + '" style="margin-top:6px;font-size:14px"><button class="go2" data-copy="' + i + '">コピー</button></div>';
+            }).join('');
+          m.onclick = function (e) {
+            var i = e.target.getAttribute('data-copy'); if (i === null) return;
+            var url = r.data.links[Number(i)].url, b = e.target;
+            var done = function () { b.textContent = 'コピーしました'; };
+            if (navigator.clipboard) navigator.clipboard.writeText(url).then(done, function () { $('[data-i="' + i + '"]').select(); document.execCommand('copy'); done(); });
+            else { $('[data-i="' + i + '"]').select(); document.execCommand('copy'); done(); }
+          };
+        })
+        .withFailureHandler(function () {
+          $('#mk').disabled = false; $('#mk').textContent = 'もう一度押す';
+          msg($('#mkOut'), 'ng', '通信できませんでした。電波の良い所でもう一度押してください（二重に作られることはありません）');
+        })
+        .api_setupProduction(key);
+    });
+  }
+
   function refreshBootstrap() {
     return call('api_bootstrap').then(function (r) { if (r.ok) { S.data = r.data; S.me = r.data.me; } return r; });
   }
@@ -812,6 +845,8 @@
       var v = m ? decodeURIComponent(m[1]) : '';
       return re.test(v) ? v : '';
     }
+    var setupKey = fromUrl('setup', /^[a-f0-9]{32,96}$/);
+    if (setupKey) return showSetup(setupKey);
     var token = document.body.getAttribute('data-token') || fromUrl('t', /^[a-f0-9]{32,128}$/);
     var area = document.body.getAttribute('data-area') || fromUrl('area', /^[A-Za-z0-9-]{1,20}$/);
     var fresh = !!token;
