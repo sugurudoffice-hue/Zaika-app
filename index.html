@@ -776,14 +776,14 @@
   var ADMIN = { tab: 'unk', d: null };
   function showAdmin() {
     var m = $('#main');
-    m.innerHTML = chips('adm', [['unk', '確認待ち'], ['emp', '社員'], ['site', '現場'], ['sup', '電材屋'], ['area', 'エリア・QR']], ADMIN.tab) + '<div id="adm"></div>';
+    m.innerHTML = chips('adm', [['unk', '確認待ち'], ['emp', '社員'], ['site', '現場'], ['sup', '電材屋'], ['area', 'エリア・QR'], ['lw', 'LINE WORKS']], ADMIN.tab) + '<div id="adm"></div>';
     onChips(m, function (n, v) { if (n === 'adm') { ADMIN.tab = v; drawAdmin(); } });
     loadAdmin();
   }
   function loadAdmin() {
     return call('api_adminData').then(function (r) {
       if (!r.ok) return msg($('#adm'), 'ng', r.message);
-      ADMIN.d = r.data; drawAdmin();
+      ADMIN.d = r.data; S.adminEmployees = r.data.employees.filter(function (e) { return e.有効; }); drawAdmin();
     });
   }
   function afterSave(text) {
@@ -811,6 +811,10 @@
         return row(s.社名, esc(s.注文方法) + (s.担当者 ? '・' + esc(s.担当者) : '') + (s.連絡先 ? '・' + esc(s.連絡先) : ''), 'data-sup="' + esc(s.仕入先ID) + '"');
       }).join('');
     }
+    if (t === 'lw') {
+      box.innerHTML = '<div id="lwBox">読み込み中…</div>';
+      return loadLineWorks();
+    }
     if (t === 'unk') {
       box.innerHTML = '<div class="sub">名前が分からない物として登録された在庫です。写真を見て材料を決めてください。</div><div id="unkList">読み込み中…</div>';
       return loadUnknown();
@@ -835,6 +839,59 @@
       });
     };
   }
+  /** LINE WORKSの在庫Bot：鍵の入力、受け取り先、つなぐ申請 */
+  function loadLineWorks() {
+    call('api_adminLineWorks').then(function (r) {
+      var box = $('#lwBox'); if (!box) return;
+      if (!r.ok) return msg(box, 'ng', r.message);
+      var d = r.data, done = d.入力済み;
+      var f = function (k, label, ph, area) {
+        return '<div class="lbl">' + esc(label) + (done[k] ? ' <span class="chip ok">入力済み</span>' : '') + '</div>' +
+          (area ? '<textarea data-lw="' + k + '" rows="4" style="width:100%;font-size:14px" placeholder="' + esc(ph) + '"></textarea>' : '<input data-lw="' + k + '" placeholder="' + esc(ph) + '">');
+      };
+      box.innerHTML =
+        (d.申請.length ? '<h3>つなぐ申請（' + d.申請.length + '件）</h3>' + d.申請.map(function (x, i) {
+          return '<div class="card"><b>' + esc(x.名前) + '</b> <span class="sub">' + esc(String(x.日時).slice(5, 16).replace('T', ' ')) + '</span>' +
+            '<div class="lbl">どの社員ですか</div>' + chips('lwemp' + i, S.adminEmployees.map(function (e) { return [e.社員ID, esc(e.氏名)]; }), '') +
+            '<button class="go2" data-link="' + i + '">つなぐ</button></div>';
+        }).join('') : '') +
+        '<h3>つながっている社員</h3>' + (d.つながっている社員.length ? d.つながっている社員.map(function (e) { return '<div>' + esc(e.氏名) + '</div>'; }).join('') : '<div class="sub">まだいません。社員がBotに名前を送ると、ここに申請が出ます。</div>') +
+        '<h3>Botの設定</h3>' + (d.設定済み ? '<div class="msg ok">設定済みです（Bot ID ' + esc(d.BotID) + '）。変えるときだけ入力してください。</div>' : '<div class="msg warn">手順書に沿って、LINE WORKSの管理画面で発行した値を入れてください。</div>') +
+        f('クライアントID', 'Client ID', '') + f('クライアントシークレット', 'Client Secret', '') + f('サービスアカウント', 'Service Account', '例：xxxxx.serviceaccount@takudenkocoltd') +
+        f('秘密鍵', 'Private Key（ダウンロードしたファイルの中身をすべて）', '-----BEGIN PRIVATE KEY----- から -----END PRIVATE KEY----- まで', true) + f('BotID', 'Bot ID', '数字') +
+        '<button class="go" data-lwsave>保存する</button><div data-out></div>' +
+        (d.受け取り先 ? '<h3>Botの受け取り先（Callback URL）</h3><div class="sub">LINE WORKSの管理画面の「Callback URL」に貼ってください。人に見せないでください。</div><input readonly value="' + esc(d.受け取り先) + '" data-cb style="font-size:13px"><button class="go2" data-cbcopy>コピー</button>' : '');
+      onChips(box, function () {});
+      box.onclick = function (e) {
+        var t = e.target;
+        if (t.hasAttribute('data-lwsave')) {
+          var p = {};
+          $all('[data-lw]', box).forEach(function (i) { if (i.value.trim()) p[i.getAttribute('data-lw')] = i.value; });
+          if (!Object.keys(p).length) return msg($('[data-out]', box), 'warn', '入力された項目がありません');
+          call('api_adminSaveLineWorks', newReqId(), p).then(function (x) {
+            if (!x.ok) return msg($('[data-out]', box), 'ng', x.message);
+            toast('保存しました'); loadLineWorks();
+          });
+        }
+        if (t.hasAttribute('data-cbcopy')) {
+          var v = $('[data-cb]', box).value;
+          var done2 = function () { t.textContent = 'コピーしました'; };
+          if (navigator.clipboard) navigator.clipboard.writeText(v).then(done2, function () { $('[data-cb]', box).select(); document.execCommand('copy'); done2(); });
+          else { $('[data-cb]', box).select(); document.execCommand('copy'); done2(); }
+        }
+        var li = t.getAttribute('data-link');
+        if (li !== null) {
+          var emp = chipValue(box, 'lwemp' + li);
+          if (!emp) return toast('どの社員か選んでください');
+          call('api_adminLinkLineWorks', newReqId(), { userId: d.申請[Number(li)].userId, 社員ID: emp }).then(function (x) {
+            if (!x.ok) return toast(x.message);
+            toast(x.data.氏名 + 'さんとつなぎました'); loadLineWorks();
+          });
+        }
+      };
+    });
+  }
+
   function loadUnknown() {
     call('api_unknownList').then(function (r) {
       var box = $('#unkList'); if (!box) return;
