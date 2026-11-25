@@ -329,6 +329,7 @@
       '<input type="file" accept="image/*" capture="environment" id="qrPhoto" class="hidden"><div id="areas"></div><div id="areaNote"></div>' +
       '<div class="row" style="justify-content:space-between;margin-top:12px"><div class="lbl" style="margin:0">材料</div><button class="btn" id="camBtn" style="min-height:40px">写真で選ぶ</button></div>' +
       '<input type="file" accept="image/*" capture="environment" id="camPhoto" class="hidden"><div id="pk"></div>' +
+      '<button class="go2" id="unkBtn">名前が分からない物（写真と数だけ）</button>' +
       '<div id="detail" class="hidden">' + chips('cond', [['新品', '新品'], ['端材', '端材'], ['旧品', '旧品'], ['中古', '中古']], '新品') +
       '<div data-qbox><div class="lbl" id="qlbl">数量</div><input class="qty" id="qty" type="number" inputmode="decimal" step="any"></div>' +
       '<div data-lbox class="hidden"><div class="lbl">端材の長さ（1本ずつ、空白かカンマ区切り）</div><input class="qty" id="lens" inputmode="decimal" placeholder="12 8 3.5"></div>' +
@@ -374,6 +375,14 @@
     $('#photoBtn').addEventListener('click', function () { $('#photo').click(); });
     $('#qrBtn').addEventListener('click', function () { $('#qrPhoto').click(); });
     $('#camBtn').addEventListener('click', function () { $('#camPhoto').click(); });
+    $('#unkBtn').addEventListener('click', function () {
+      var a = S.data.areas.filter(function (x) { return x.エリアID === st.area; })[0];
+      if (!a) return toast('先にエリアを選んでください');
+      unknownSheet(a, function () {
+        S.data.areas.forEach(function (x) { if (x.エリアID === a.エリアID && x.調査状態 === '未調査') x.調査状態 = '調査中'; });
+        drawAreas();
+      }, loadAreaList);
+    });
     $('#camPhoto').addEventListener('change', function () {
       var f = this.files[0]; this.value = ''; if (!f) return;
       photoCandidates(f, function (mat, photoId) {
@@ -484,6 +493,52 @@
           img.onerror = reject; img.src = r.result;
         };
         r.onerror = reject; r.readAsDataURL(file);
+      });
+    });
+  }
+
+  /** 名前が分からない物：写真と数だけで登録する。名前は管理者が後で決める */
+  var UNITS = ['個', '本', 'm', '箱', '袋', '巻', 'セット'];
+  function unknownSheet(area, onDone, onUndo) {
+    var st = { photo: '', unit: '個' };
+    var reqId = newReqId();
+    var s = openSheet('<div style="font-weight:700;font-size:20px">名前が分からない物を登録（' + esc(area.エリアID) + '）</div>' +
+      '<div class="sub">写真と数だけで大丈夫です。名前は管理者が後で写真を見て決めます。</div>' +
+      '<button class="go2" data-cam>① 写真を撮る（必須）</button><input type="file" accept="image/*" capture="environment" data-file class="hidden"><div data-photo class="sub"></div>' +
+      '<div class="lbl">② 数</div><input class="qty" data-qty type="number" inputmode="decimal" step="any">' +
+      '<div class="lbl">③ 単位</div>' + chips('unit', UNITS.map(function (u) { return [u, u]; }), '個') +
+      '<div class="lbl">メモ（任意。例：灰色の箱、太い黒い線）</div><input data-memo>' +
+      '<button class="go" data-go disabled>写真を撮ってください</button><div data-out></div>');
+    function label() {
+      var q = Number($('[data-qty]', s).value), b = $('[data-go]', s);
+      b.disabled = !(st.photo && q > 0);
+      b.textContent = !st.photo ? '写真を撮ってください' : !q ? '数を入れてください' : '登録：名前確認待ち ' + q + st.unit + '（' + area.エリアID + '）';
+    }
+    onChips(s, function (n, v) { st.unit = v; label(); });
+    $('[data-qty]', s).addEventListener('input', label);
+    $('[data-cam]', s).addEventListener('click', function () { $('[data-file]', s).click(); });
+    $('[data-file]', s).addEventListener('change', function () {
+      var f = this.files[0]; this.value = ''; if (!f) return;
+      $('[data-photo]', s).textContent = '写真を保存しています…';
+      resizePhoto(f, 1600, 0.85).then(function (d) {
+        return call('api_uploadPhoto', newReqId(), d).then(function (r) {
+          if (!r.ok) { $('[data-photo]', s).textContent = r.message; return; }
+          st.photo = r.data.写真ID;
+          $('[data-photo]', s).innerHTML = '<img class="photo" style="max-height:160px" src="' + esc(d) + '">';
+          $('[data-cam]', s).textContent = '① 写真を撮り直す';
+          label(); $('[data-qty]', s).focus();
+        });
+      }).catch(function () { $('[data-photo]', s).textContent = '写真を読み込めませんでした'; });
+    });
+    $('[data-go]', s).addEventListener('click', function () {
+      var q = Number($('[data-qty]', s).value);
+      call('api_registerUnknown', reqId, { エリアID: area.エリアID, 数量: q, 単位: st.unit, 写真ID: st.photo, メモ: $('[data-memo]', s).value.trim(), 確定済みでも登録: area.調査状態 === '確定' }).then(function (r) {
+        if (!r.ok) return msg($('[data-out]', s), 'ng', r.message);
+        s.remove();
+        var ids = r.data.履歴IDs;
+        if (onDone) onDone();
+        if (onUndo) onUndo();
+        toast('登録しました（名前の確認待ち ' + q + st.unit + '）', function () { undoMovements(ids, '登録').then(function () { if (onUndo) onUndo(); }); });
       });
     });
   }
@@ -706,10 +761,10 @@
   }
 
   // ---------- 管理（管理・経営の人だけ） ----------
-  var ADMIN = { tab: 'emp', d: null };
+  var ADMIN = { tab: 'unk', d: null };
   function showAdmin() {
     var m = $('#main');
-    m.innerHTML = chips('adm', [['emp', '社員'], ['site', '現場'], ['sup', '電材屋'], ['area', 'エリア・QR']], ADMIN.tab) + '<div id="adm"></div>';
+    m.innerHTML = chips('adm', [['unk', '確認待ち'], ['emp', '社員'], ['site', '現場'], ['sup', '電材屋'], ['area', 'エリア・QR']], ADMIN.tab) + '<div id="adm"></div>';
     onChips(m, function (n, v) { if (n === 'adm') { ADMIN.tab = v; drawAdmin(); } });
     loadAdmin();
   }
@@ -744,6 +799,10 @@
         return row(s.社名, esc(s.注文方法) + (s.担当者 ? '・' + esc(s.担当者) : '') + (s.連絡先 ? '・' + esc(s.連絡先) : ''), 'data-sup="' + esc(s.仕入先ID) + '"');
       }).join('');
     }
+    if (t === 'unk') {
+      box.innerHTML = '<div class="sub">名前が分からない物として登録された在庫です。写真を見て材料を決めてください。</div><div id="unkList">読み込み中…</div>';
+      return loadUnknown();
+    }
     if (t === 'area') {
       h = '<button class="go" data-qrpdf>QRラベルを印刷用PDFで作る（全エリア）</button><div class="sub">A4に8枚。印刷して棚・箱に貼ってください。アプリの「登録」→「QRを撮る」でラベルを撮ると、そのエリアが選ばれます。</div>' +
         '<button class="go2" data-add="area">＋ エリアを追加</button>' + d.areas.map(function (a) {
@@ -764,6 +823,61 @@
       });
     };
   }
+  function loadUnknown() {
+    call('api_unknownList').then(function (r) {
+      var box = $('#unkList'); if (!box) return;
+      if (!r.ok) return msg(box, 'ng', r.message);
+      if (!r.data.length) { box.innerHTML = '<div class="msg ok">確認待ちはありません</div>'; return; }
+      box.innerHTML = r.data.map(function (x) {
+        return '<div class="card"><div data-img="' + esc(x.写真ID) + '" class="sub">写真を読み込み中…</div>' +
+          '<div><b>' + esc(x.エリアID) + '</b>・' + esc(x.数量) + esc(x.単位) + (x.備考 ? '・' + esc(x.備考) : '') + '</div>' +
+          '<div class="sub">' + esc(x.登録者名) + '・' + esc(String(x.登録日時).slice(5, 16).replace('T', ' ')) + '</div>' +
+          '<button class="btn" data-resolve="' + esc(x.ロットID) + '">名前を決める</button></div>';
+      }).join('');
+      // 写真は1枚ずつ読み込む
+      $all('[data-img]', box).reduce(function (p, el) {
+        return p.then(function () {
+          return call('api_photo', el.getAttribute('data-img')).then(function (ph) {
+            el.innerHTML = ph.ok ? '<img class="photo" style="max-height:220px" src="' + esc(ph.data) + '">' : '写真を読み込めませんでした';
+          });
+        });
+      }, Promise.resolve());
+      box.onclick = function (e) {
+        var id = e.target.getAttribute('data-resolve'); if (!id) return;
+        var x = r.data.filter(function (y) { return y.ロットID === id; })[0];
+        var img = $('[data-img="' + x.写真ID + '"] img', box);
+        resolveSheet(x, img ? img.src : '');
+      };
+    });
+  }
+  function resolveSheet(x, imgSrc) {
+    var reqId = newReqId();
+    var s = openSheet('<div style="font-weight:700;font-size:20px">名前を決める（' + esc(x.エリアID) + '・' + esc(x.数量) + esc(x.単位) + '）</div>' +
+      (imgSrc ? '<img class="photo" src="' + esc(imgSrc) + '">' : '') + (x.備考 ? '<div>メモ：' + esc(x.備考) + '</div>' : '') +
+      '<div class="lbl">材料</div><div data-pk></div>' +
+      '<div class="lbl" data-qlbl>数</div><input class="qty" data-qty type="number" inputmode="decimal" step="any" value="' + esc(x.数量) + '">' +
+      '<div class="sub" data-hint></div><button class="go" data-go disabled>材料を選んでください</button><div data-out></div>');
+    var pk2 = picker($('[data-pk]', s), { allowNew: true, onChange: label });
+    function label() {
+      var m = pk2.value(), q = Number($('[data-qty]', s).value), b = $('[data-go]', s);
+      var unit = m ? (m.単位 || x.単位) : '';
+      $('[data-qlbl]', s).textContent = '数（' + (unit || '材料の単位') + 'で）';
+      $('[data-hint]', s).textContent = m && unit && unit !== x.単位 ? (x.登録者名 || '登録者') + ' さんの記録は ' + x.数量 + x.単位 + ' です。' + unit + ' に直して入れてください（例：2巻→200m）' : '';
+      b.disabled = !(m && q > 0);
+      b.textContent = !m ? '材料を選んでください' : !q ? '数を入れてください' : '確定：' + (m.新規 ? m.品名 : matLabel(m)) + ' ' + q + unit;
+    }
+    $('[data-qty]', s).addEventListener('input', label);
+    $('[data-go]', s).addEventListener('click', function () {
+      var m = pk2.value();
+      var p = { ロットID: x.ロットID, 数量: Number($('[data-qty]', s).value), 版: x.版 };
+      if (m.新規) p.新規材料 = m.新規材料; else p.材料ID = m.材料ID;
+      call('api_resolveUnknown', reqId, p).then(function (r) {
+        if (!r.ok) return msg($('[data-out]', s), 'ng', r.message);
+        s.remove(); toast('名前を決めました'); refreshBootstrap(); loadUnknown();
+      });
+    });
+  }
+
   function field(name, label, value, ph) {
     return '<div class="lbl">' + esc(label) + '</div><input data-f="' + esc(name) + '" value="' + esc(value || '') + '" placeholder="' + esc(ph || '') + '">';
   }
