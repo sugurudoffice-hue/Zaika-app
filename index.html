@@ -916,7 +916,9 @@
           '<div><b>' + esc(x.エリアID) + '</b>・' + esc(x.数量) + esc(x.単位) + (x.備考 ? '・' + esc(x.備考) : '') + '</div>' +
           (x.Claude候補 && x.Claude候補.length ? '<div class="chip ok">Claudeの候補：' + esc(x.Claude候補[0].品名) + '</div>' : '') +
           '<div class="sub">' + esc(x.登録者名) + '・' + esc(String(x.登録日時).slice(5, 16).replace('T', ' ')) + '</div>' +
-          '<button class="btn" data-resolve="' + esc(x.ロットID) + '">名前を決める</button></div>';
+          (x.Claude分割 && x.Claude分割.length ? '<div class="chip ok">Claudeが ' + x.Claude分割.length + ' 品目に分けました</div>' : '') +
+          '<button class="btn" data-split="' + esc(x.ロットID) + '">中身を分けて登録</button> ' +
+          '<button class="btn" data-resolve="' + esc(x.ロットID) + '">1つの材料として決める</button></div>';
       }).join('');
       // 写真は1枚ずつ読み込む
       $all('[data-img]', box).reduce(function (p, el) {
@@ -927,12 +929,67 @@
         });
       }, Promise.resolve());
       box.onclick = function (e) {
-        var id = e.target.getAttribute('data-resolve'); if (!id) return;
+        var id = e.target.getAttribute('data-resolve') || e.target.getAttribute('data-split'); if (!id) return;
         var x = r.data.filter(function (y) { return y.ロットID === id; })[0];
         var img = $('[data-img="' + x.写真ID + '"] img', box);
-        resolveSheet(x, img ? img.src : '');
+        if (e.target.hasAttribute('data-split')) splitSheet(x, img ? img.src : '');
+        else resolveSheet(x, img ? img.src : '');
       };
     });
+  }
+  /** 棚の写真1枚を、写っている品目ごとの在庫に分ける（Claudeの案があれば最初から並べる） */
+  function splitSheet(x, imgSrc) {
+    var reqId = newReqId();
+    var rows = (x.Claude分割 || []).map(function (c) {
+      return { 材料ID: c.材料ID || '', 新規材料: c.新規 || null, 品名: c.品名, 単位: c.単位 || '', 数量: c.数量 || '', 理由: c.理由 || '', 要確認: !!c.要確認, 使う: true };
+    });
+    var s = openSheet('<div style="font-weight:700;font-size:20px">中身を分けて登録（' + esc(x.エリアID) + '）</div>' +
+      (imgSrc ? '<img class="photo" src="' + esc(imgSrc) + '">' : '') +
+      '<div class="sub">写っている物にチェックを入れ、数を直して「登録」を押してください。</div>' +
+      '<div data-rows></div>' +
+      '<div class="lbl">品目を足す</div><div data-pk></div><input class="qty" data-addq type="number" inputmode="decimal" step="any" placeholder="数"><button class="btn" data-add>この品目を足す</button>' +
+      '<button class="go" data-go></button><div data-out></div>');
+    var chosen = null;
+    var pk = picker($('[data-pk]', s), { allowNew: true, onChange: function (m) { chosen = m; } });
+    function draw() {
+      $('[data-rows]', s).innerHTML = rows.length ? rows.map(function (r, i) {
+        return '<div class="card"><label style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-use="' + i + '"' + (r.使う ? ' checked' : '') + ' style="width:24px;height:24px">' +
+          '<b>' + esc(r.品名) + '</b>' + (r.要確認 ? ' <span class="chip warn">要確認</span>' : '') + '</label>' +
+          (r.理由 ? '<div class="sub">' + esc(r.理由) + '</div>' : '') +
+          '<div style="display:flex;gap:8px;align-items:center"><input class="qty" data-rq="' + i + '" type="number" inputmode="decimal" step="any" value="' + esc(r.数量) + '" style="max-width:140px"> ' + esc(r.単位) + '</div></div>';
+      }).join('') : '<div class="sub">まだ品目がありません。下の「品目を足す」で足してください。</div>';
+      label();
+    }
+    function picked() { return rows.filter(function (r) { return r.使う && Number(r.数量) > 0; }); }
+    function label() {
+      var n = picked().length, b = $('[data-go]', s);
+      b.disabled = !n;
+      b.textContent = n ? '選んだ ' + n + ' 品目を登録' : '品目を選んで数を入れてください';
+    }
+    s.addEventListener('input', function (e) {
+      var q = e.target.getAttribute('data-rq'); if (q !== null) { rows[Number(q)].数量 = e.target.value; label(); }
+    });
+    s.addEventListener('change', function (e) {
+      var u = e.target.getAttribute('data-use'); if (u !== null) { rows[Number(u)].使う = e.target.checked; label(); }
+    });
+    $('[data-add]', s).addEventListener('click', function () {
+      var m = pk.value(), q = Number($('[data-addq]', s).value);
+      if (!m || !(q > 0)) return msg($('[data-out]', s), 'ng', '材料を選んで数を入れてください');
+      rows.push(m.新規 ? { 新規材料: m.新規材料, 品名: '新しい材料：' + m.品名, 単位: m.単位, 数量: q, 使う: true } : { 材料ID: m.材料ID, 品名: matLabel(m), 単位: m.単位, 数量: q, 使う: true });
+      $('[data-addq]', s).value = ''; $('[data-out]', s).innerHTML = '';
+      draw();
+    });
+    $('[data-go]', s).addEventListener('click', function () {
+      var items = picked().map(function (r) {
+        return r.材料ID ? { 材料ID: r.材料ID, 数量: Number(r.数量) } : { 新規材料: r.新規材料, 数量: Number(r.数量) };
+      });
+      $('[data-go]', s).disabled = true;
+      call('api_splitUnknown', reqId, { ロットID: x.ロットID, 版: x.版, 品目: items }).then(function (r) {
+        if (!r.ok) { label(); return msg($('[data-out]', s), 'ng', r.message); }
+        s.remove(); toast(items.length + ' 品目を登録しました'); refreshBootstrap(); loadUnknown();
+      });
+    });
+    draw();
   }
   function resolveSheet(x, imgSrc) {
     var reqId = newReqId();
