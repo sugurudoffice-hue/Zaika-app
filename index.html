@@ -327,9 +327,11 @@
     var m = $('#main');
     m.innerHTML = '<div class="row" style="justify-content:space-between;margin-top:4px"><div class="lbl" style="margin:0">エリア</div><button class="btn" id="qrBtn" style="min-height:40px">QRを撮る</button></div>' +
       '<input type="file" accept="image/*" capture="environment" id="qrPhoto" class="hidden"><div id="areas"></div><div id="areaNote"></div>' +
+      '<button class="go" id="unkBtn">写真を撮って登録（名前が分からなくてOK）</button>' +
+      '<h3 style="margin-top:24px">名前が分かる場合</h3>' +
       '<div class="row" style="justify-content:space-between;margin-top:12px"><div class="lbl" style="margin:0">材料</div><button class="btn" id="camBtn" style="min-height:40px">写真で選ぶ</button></div>' +
       '<input type="file" accept="image/*" capture="environment" id="camPhoto" class="hidden"><div id="pk"></div>' +
-      '<button class="go2" id="unkBtn">名前が分からない物（写真と数だけ）</button>' +
+
       '<div id="detail" class="hidden">' + chips('cond', [['新品', '新品'], ['端材', '端材'], ['旧品', '旧品'], ['中古', '中古']], '新品') +
       '<div data-qbox><div class="lbl" id="qlbl">数量</div><input class="qty" id="qty" type="number" inputmode="decimal" step="any"></div>' +
       '<div data-lbox class="hidden"><div class="lbl">端材の長さ（1本ずつ、空白かカンマ区切り）</div><input class="qty" id="lens" inputmode="decimal" placeholder="12 8 3.5"></div>' +
@@ -502,8 +504,8 @@
   function unknownSheet(area, onDone, onUndo) {
     var st = { photo: '', unit: '個' };
     var reqId = newReqId();
-    var s = openSheet('<div style="font-weight:700;font-size:20px">名前が分からない物を登録（' + esc(area.エリアID) + '）</div>' +
-      '<div class="sub">写真と数だけで大丈夫です。名前は管理者が後で写真を見て決めます。</div>' +
+    var s = openSheet('<div style="font-weight:700;font-size:20px">写真を撮って登録（' + esc(area.エリアID) + '）</div>' +
+      '<div class="sub">写真と数だけで大丈夫です。名前は管理者が後で写真を見て決めます。ラベルや箱の文字が写るように撮ると、名前を決めるのが早くなります。</div>' +
       '<button class="go2" data-cam>① 写真を撮る（必須）</button><input type="file" accept="image/*" capture="environment" data-file class="hidden"><div data-photo class="sub"></div>' +
       '<div class="lbl">② 数</div><input class="qty" data-qty type="number" inputmode="decimal" step="any">' +
       '<div class="lbl">③ 単位</div>' + chips('unit', UNITS.map(function (u) { return [u, u]; }), '個') +
@@ -854,10 +856,22 @@
     var reqId = newReqId();
     var s = openSheet('<div style="font-weight:700;font-size:20px">名前を決める（' + esc(x.エリアID) + '・' + esc(x.数量) + esc(x.単位) + '）</div>' +
       (imgSrc ? '<img class="photo" src="' + esc(imgSrc) + '">' : '') + (x.備考 ? '<div>メモ：' + esc(x.備考) + '</div>' : '') +
+      '<div data-sugg class="sub">写真の文字を読み取っています…</div>' +
       '<div class="lbl">材料</div><div data-pk></div>' +
       '<div class="lbl" data-qlbl>数</div><input class="qty" data-qty type="number" inputmode="decimal" step="any" value="' + esc(x.数量) + '">' +
       '<div class="sub" data-hint></div><button class="go" data-go disabled>材料を選んでください</button><div data-out></div>');
     var pk2 = picker($('[data-pk]', s), { allowNew: true, onChange: label });
+    call('api_photoText', x.写真ID).then(function (r) {
+      var box = $('[data-sugg]', s); if (!box) return;
+      var c = r.ok ? r.data.候補 : [];
+      box.innerHTML = c.length ? '<div class="lbl">写真の文字からの候補</div>' + c.map(function (y) {
+        return '<button class="pick" data-sug="' + esc(y.材料ID) + '">' + esc(y.品名) + '</button>';
+      }).join('') : '（写真から文字を読み取れませんでした。下で材料を探してください）';
+      box.onclick = function (e) {
+        var b = e.target.closest('[data-sug]'); if (!b) return;
+        pk2.set(matById(b.getAttribute('data-sug')));
+      };
+    });
     function label() {
       var m = pk2.value(), q = Number($('[data-qty]', s).value), b = $('[data-go]', s);
       var unit = m ? (m.単位 || x.単位) : '';
