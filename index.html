@@ -855,6 +855,14 @@
             '<div class="lbl">どの社員ですか</div>' + chips('lwemp' + i, S.adminEmployees.map(function (e) { return [e.社員ID, esc(e.氏名)]; }), '') +
             '<button class="go2" data-link="' + i + '">つなぐ</button></div>';
         }).join('') : '') +
+        '<h3>動作の記録</h3>' + (function () {
+          var n = d.動作の記録 || {};
+          var line = function (label, x, fmt) { return '<div>' + esc(label) + '：' + (x ? esc(String(x.日時).slice(5, 16).replace('T', ' ')) + (fmt ? '　' + esc(fmt(x)) : '') : 'なし') + '</div>'; };
+          return '<div class="card" style="font-size:15px">' +
+            line('最後に届いた通知', n.最後に届いた通知, function (x) { return x.中身 || x.種類; }) +
+            line('受け取り先の合言葉が違う通知', n.合言葉が違う通知) +
+            line('最後のエラー', n.最後のエラー, function (x) { return x.場所 + ' ' + (x.コード || '') + ' ' + (x.内容 || ''); }) + '</div>';
+        })() + '<button class="go2" data-lwtest>LINE WORKSとの接続テスト</button><div data-testout></div>' +
         '<h3>つながっている社員</h3>' + (d.つながっている社員.length ? d.つながっている社員.map(function (e) { return '<div>' + esc(e.氏名) + '</div>'; }).join('') : '<div class="sub">まだいません。社員がBotに名前を送ると、ここに申請が出ます。</div>') +
         '<h3>Botの設定</h3>' + (d.設定済み ? '<div class="msg ok">設定済みです（Bot ID ' + esc(d.BotID) + '）。変えるときだけ入力してください。</div>' : '<div class="msg warn">手順書に沿って、LINE WORKSの管理画面で発行した値を入れてください。</div>') +
         f('クライアントID', 'Client ID', '') + f('クライアントシークレット', 'Client Secret', '') + f('サービスアカウント', 'Service Account', '例：xxxxx.serviceaccount@takudenkocoltd') +
@@ -864,7 +872,13 @@
       onChips(box, function () {});
       box.onclick = function (e) {
         var t = e.target;
-        if (t.hasAttribute('data-lwsave')) {
+        if (t.hasAttribute('data-lwtest')) {
+          call('api_adminTestLineWorks').then(function (x) {
+            if (!x.ok) return msg($('[data-testout]', box), 'ng', x.message);
+            msg($('[data-testout]', box), x.data.結果 === 'OK' ? 'ok' : 'ng', x.data.内容);
+          });
+        }
+                if (t.hasAttribute('data-lwsave')) {
           var p = {};
           $all('[data-lw]', box).forEach(function (i) { if (i.value.trim()) p[i.getAttribute('data-lw')] = i.value; });
           if (!Object.keys(p).length) return msg($('[data-out]', box), 'warn', '入力された項目がありません');
