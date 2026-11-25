@@ -217,6 +217,16 @@
         return null;
       },
       set: function (m) { choose(m); },
+      /** 新しい材料の入力欄を埋めて開く（Claudeの候補から） */
+      setNew: function (n) {
+        if (!opts.allowNew) return;
+        chosen = null;
+        $('[data-box]', root).classList.add('hidden');
+        $('[data-chosen]', root).classList.add('hidden');
+        $('[data-newform]', root).classList.remove('hidden');
+        $all('[data-n]', root).forEach(function (i) { i.value = n[i.getAttribute('data-n')] || ''; });
+        opts.onChange({ 新規: true });
+      },
       reset: function () { chosen = null; q.value = ''; $('[data-box]', root).classList.remove('hidden'); $('[data-chosen]', root).classList.add('hidden'); if (opts.allowNew) { $('[data-newform]', root).classList.add('hidden'); $all('[data-n]', root).forEach(function (i) { i.value = ''; }); } render(); },
       focus: function () { q.focus(); },
     };
@@ -833,6 +843,7 @@
       box.innerHTML = r.data.map(function (x) {
         return '<div class="card"><div data-img="' + esc(x.写真ID) + '" class="sub">写真を読み込み中…</div>' +
           '<div><b>' + esc(x.エリアID) + '</b>・' + esc(x.数量) + esc(x.単位) + (x.備考 ? '・' + esc(x.備考) : '') + '</div>' +
+          (x.Claude候補 && x.Claude候補.length ? '<div class="chip ok">Claudeの候補：' + esc(x.Claude候補[0].品名) + '</div>' : '') +
           '<div class="sub">' + esc(x.登録者名) + '・' + esc(String(x.登録日時).slice(5, 16).replace('T', ' ')) + '</div>' +
           '<button class="btn" data-resolve="' + esc(x.ロットID) + '">名前を決める</button></div>';
       }).join('');
@@ -856,11 +867,21 @@
     var reqId = newReqId();
     var s = openSheet('<div style="font-weight:700;font-size:20px">名前を決める（' + esc(x.エリアID) + '・' + esc(x.数量) + esc(x.単位) + '）</div>' +
       (imgSrc ? '<img class="photo" src="' + esc(imgSrc) + '">' : '') + (x.備考 ? '<div>メモ：' + esc(x.備考) + '</div>' : '') +
+      (x.Claude候補 && x.Claude候補.length ? '<div class="lbl">Claudeの候補</div>' + x.Claude候補.map(function (c, i) {
+        return '<button class="pick" data-claude="' + i + '"><b>' + esc(c.品名) + '</b>' + (c.要確認 ? ' <span class="chip warn">要確認</span>' : '') + (c.理由 ? '<br><span class="sub">' + esc(c.理由) + '</span>' : '') + '</button>';
+      }).join('') : '') +
       '<div data-sugg class="sub">写真の文字を読み取っています…</div>' +
       '<div class="lbl">材料</div><div data-pk></div>' +
       '<div class="lbl" data-qlbl>数</div><input class="qty" data-qty type="number" inputmode="decimal" step="any" value="' + esc(x.数量) + '">' +
       '<div class="sub" data-hint></div><button class="go" data-go disabled>材料を選んでください</button><div data-out></div>');
     var pk2 = picker($('[data-pk]', s), { allowNew: true, onChange: label });
+    s.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-claude]'); if (!b) return;
+      var c = x.Claude候補[Number(b.getAttribute('data-claude'))];
+      if (c.材料ID) pk2.set(matById(c.材料ID)); else pk2.setNew(c.新規);
+      if (c.数量の目安) $('[data-qty]', s).value = c.数量の目安;
+      label();
+    });
     call('api_photoText', x.写真ID).then(function (r) {
       var box = $('[data-sugg]', s); if (!box) return;
       var c = r.ok ? r.data.候補 : [];
